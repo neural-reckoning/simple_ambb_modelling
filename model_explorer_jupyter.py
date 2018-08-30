@@ -2,6 +2,8 @@ import ipywidgets as ipw
 from IPython.display import display, clear_output
 from collections import OrderedDict
 import numpy
+import os
+import pickle
 
 __all__ = ['no_continuous_update',
            'model_explorer',
@@ -9,6 +11,7 @@ __all__ = ['no_continuous_update',
            'meshed_arguments',
            'save_fig_widget',
            'brian2_progress_reporter',
+           'load_save_parameters_widget',
            ]
 
 def no_continuous_update(i):
@@ -339,3 +342,52 @@ def meshed_arguments(meshvars, fixedvars, ranges):
     for i, c in enumerate(numpy.meshgrid(*[ranges[var] for var in meshvars])):
         kwds[meshvars[i]] = c
     return kwds
+
+
+def load_save_parameters_widget(widgets, filename):
+    '''
+    Returns a box of widgets that manage saving/loading values from a given set of parameters.
+    '''
+    if os.path.exists(filename):
+        param_sets = pickle.load(open(filename, 'rb'))
+    else:
+        param_sets = {}
+    def getparams():
+        params = {}
+        for name, widget in widgets.items():
+            params[name] = widget.value
+        return params
+    def setparams(params):
+        for name, widget in widgets.items():
+            widget.value = params[name]
+    def saveparams():
+        pickle.dump(param_sets, open(filename, 'wb'), -1)
+        dropdown.options = sorted(param_sets.keys())
+    def clicked_save(*args):
+        param_sets[textbox.value] = getparams()
+        saveparams()
+        dropdown.value = textbox.value
+    def clicked_load(*args):
+        textbox.value = dropdown.value
+        setparams(param_sets[dropdown.value])
+    def clicked_delete(*args):
+        del param_sets[dropdown.value]
+        saveparams()
+    def clicked_delete_all(*args):
+        param_sets.clear()
+        saveparams()
+    description = ipw.Label(value="Parameter set:")
+    dropdown = ipw.Dropdown(options=sorted(param_sets.keys()))
+    save_params_button = ipw.Button(description='Save')
+    save_params_button.on_click(clicked_save)
+    textbox = ipw.Text()
+    load_params_button = ipw.Button(description='Load')
+    load_params_button.on_click(clicked_load)
+    delete_params_button = ipw.Button(description='Delete')
+    delete_params_button.on_click(clicked_delete)
+    delete_all_params_button = ipw.Button(description='Delete all')
+    delete_all_params_button.on_click(clicked_delete_all)
+    save = ipw.HBox(children=[dropdown, load_params_button, delete_params_button, delete_all_params_button])
+    load = ipw.HBox(children=[textbox, save_params_button])
+    loadsave = ipw.VBox(children=[save, load])
+    return ipw.HBox(children=[description, loadsave])
