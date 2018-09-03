@@ -358,8 +358,13 @@ def load_save_parameters_widget(widgets, filename):
             params[name] = widget.value
         return params
     def setparams(params):
+        # temporarily disable and then re-enable all the widgets to stop triggering a recomputation at each change
+        for name, widget in widgets.items():
+            widget.disabled = True
         for name, widget in widgets.items():
             widget.value = params[name]
+        for name, widget in widgets.items():
+            widget.disabled = False
     def saveparams():
         pickle.dump(param_sets, open(filename, 'wb'), -1)
         dropdown.options = sorted(param_sets.keys())
@@ -390,4 +395,7 @@ def load_save_parameters_widget(widgets, filename):
     save = ipw.HBox(children=[dropdown, load_params_button, delete_params_button, delete_all_params_button])
     load = ipw.HBox(children=[textbox, save_params_button])
     loadsave = ipw.VBox(children=[save, load])
+    if 'default' in param_sets:
+        dropdown.value = 'default'
+        clicked_load()
     return ipw.HBox(children=[description, loadsave])
