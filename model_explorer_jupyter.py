@@ -12,6 +12,7 @@ __all__ = ['no_continuous_update',
            'save_fig_widget',
            'brian2_progress_reporter',
            'load_save_parameters_widget',
+           'grouped_interactive',
            ]
 
 def no_continuous_update(i):
@@ -358,13 +359,8 @@ def load_save_parameters_widget(widgets, filename):
             params[name] = widget.value
         return params
     def setparams(params):
-        # temporarily disable and then re-enable all the widgets to stop triggering a recomputation at each change
-        for name, widget in widgets.items():
-            widget.disabled = True
         for name, widget in widgets.items():
             widget.value = params[name]
-        for name, widget in widgets.items():
-            widget.disabled = False
     def saveparams():
         pickle.dump(param_sets, open(filename, 'wb'), -1)
         dropdown.options = sorted(param_sets.keys())
@@ -400,3 +396,41 @@ def load_save_parameters_widget(widgets, filename):
         dropdown.value = 'default'
         clicked_load()
     return ipw.HBox(children=[description, loadsave])
+
+
+def grouped_interactive(f, param_groups, manual_name=None):
+    '''
+    Return an ipywidgets interactive with the parameters grouped into accordions.
+
+    f is the function.
+
+    param_groups is a dictionary of (group_name, group) pairs. Each group is a
+    dictionary of (param_name, widget) pairs. If a group name is '' then the
+    corresponding widgets will be always visible and ungrouped. In this case,
+    none of the accordions will be initially selected.
+
+    If manual_name is set, the interactive control will be manual, and the run
+    button will have that label.
+    '''
+    param_groups = param_groups.copy()
+    if manual_name is None:
+        interactive_options = {}
+    else:
+        interactive_options = dict(manual=True, manual_name=manual_name)
+    all_widgets = dict((k, w) for group in param_groups.values() for k, w in group.items())
+    interactive = ipw.interactive(f, interactive_options, **all_widgets)
+    non_value_widgets = tuple(c for c in interactive.children if not isinstance(c, ipw.ValueWidget))
+    if '' in param_groups:
+        ungrouped_widgets = tuple(param_groups.pop('').values())
+    else:
+        ungrouped_widgets = ()
+    vbox_groups = [ipw.VBox(children=group.values()) for group in param_groups.values()]
+    accordion = ipw.Accordion(children=vbox_groups)
+    for i, title in enumerate(param_groups.keys()):
+        accordion.set_title(i, title)
+    if ungrouped_widgets:
+        accordion.selected_index = None
+    else:
+        accordion.selected_index = 0
+    interactive.children = ungrouped_widgets + (accordion,) + non_value_widgets
+    return interactive
