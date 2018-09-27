@@ -13,7 +13,9 @@ dietz_fm = array([4, 8, 16, 32, 64])*Hz
 dietz_phase = array([37, 40, 62, 83, 115])*pi/180
 dietz_phase_std = array([46, 29, 29, 31, 37])*pi/180
 
+# Known warnings that we expect, so suppress them
 BrianLogger.suppress_name('resolution_conflict')
+BrianLogger.suppress_name('invalid_values')
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
@@ -68,16 +70,29 @@ def simple_model(N, params, record=None, update_progress=None):
     accum_weighted_sum_cos_phase : 1
     accum_weighted_sum_sin_phase : 1
     '''
-    G = NeuronGroup(N, eqs, method='euler', dt=0.1*ms)
+    G = NeuronGroup(N*len(dietz_fm), eqs, method='euler', dt=0.1*ms)
     for k, v in params.items():
         if isinstance(v, tuple) and len(v)==2:
             low, high = v
-            params[k] = rand(N)*(high-low)+low
-    G.set_states(params)
+            params[k] = v = rand(N)*(high-low)+low
+    params2d = params.copy()
+    fm = dietz_fm
+    for k, v in params2d.items():
+        if isinstance(v, ndarray) and v.size>1:
+            fm, v = meshgrid(dietz_fm, v) # fm and v have shape (N, len(dietz_fm))
+            fm.shape = fm.size
+            v.shape = v.size
+            params2d[k] = v
+    params2d['fm'] = fm
+    G.set_states(params2d)
     G.tauihc_ms['tauihc_ms<min_tauihc/ms'] = 0
     G.Q = 1
     net = Network(G)
-    net.run(.25*second, report=update_progress, report_period=1*second)
+    if isinstance(update_progress, basestring):
+        report_period = 10*second
+    else:
+        report_period = 1*second
+    net.run(.25*second, report=update_progress, report_period=report_period)
     rr = G.run_regularly('''
         accum_sum_out += out
         phase = (2*pi*fm*t)%(2*pi)
@@ -94,7 +109,7 @@ def simple_model(N, params, record=None, update_progress=None):
     if record:
         M = StateMonitor(G, record, record=True)
         net.add(M)
-    net.run(.25*second, report=update_progress, report_period=1*second)
+    net.run(.25*second, report=update_progress, report_period=report_period)
     G.accum_sum_out['accum_sum_out==0'] = 1
     c = G.accum_weighted_sum_cos_phase[:]
     s = G.accum_weighted_sum_sin_phase[:]
@@ -109,16 +124,19 @@ def simple_model(N, params, record=None, update_progress=None):
         vs=vs,
         mean_fr=mean_fr,
         onsettiness=onsettiness,
+        params=params,
         )
     if record:
         for name in record:
             setattr(res, name, getattr(M, name)[:, :])
     return res
 
-
-def simple_model_results(N, out, error_func, weighted, interpolate_bmf=False):
+@mem.cache
+def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=False, shape=None):
     fm = dietz_fm
     n_fm = len(fm)
+    if shape is None:
+        shape = (N,)
     out_peak = out.accum_argmax_out
     peak_fr = out.accum_max_out
     weighted_phase = out.weighted_phase
@@ -161,6 +179,10 @@ def simple_model_results(N, out, error_func, weighted, interpolate_bmf=False):
     norm_measures = {'peak': norm_peak_fr, 'mean': norm_mean_fr, 'vs': vs, 'onsettiness': onsettiness}
     bmf = {'peak': peak_bmf, 'mean': mean_bmf, 'vs': vs_bmf, 'onsettiness': onsettiness_bmf}
     moddepth = {'peak': peak_moddepth, 'mean': mean_moddepth, 'vs': vs_moddepth, 'onsettiness': onsettiness_moddepth}
+    for img in [peak_phase]+raw_measures.values()+norm_measures.values():
+        img.shape = shape+(n_fm,)
+    for img in [mse, mse_norm]+bmf.values()+moddepth.values():
+        img.shape = shape
     res = Results(
         peak_phase=peak_phase,
         mse=mse,
