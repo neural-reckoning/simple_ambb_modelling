@@ -23,6 +23,8 @@
 # # Maps of simple model
 #
 # TODO:
+# * For param maps on pop/map plot, instead of showing just best param, all shown variance
+# * **Sensitivity analysis** somehow
 # * sampling/smoothing on population/map plot
 
 # + {"cell_type": "markdown", "heading_collapsed": true}
