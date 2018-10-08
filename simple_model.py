@@ -71,6 +71,7 @@ def simple_model(N, params, record=None, update_progress=None):
     accum_weighted_sum_sin_phase : 1
     '''
     G = NeuronGroup(N*len(dietz_fm), eqs, method='euler', dt=0.1*ms)
+    params = params.copy()
     for k, v in params.items():
         if isinstance(v, tuple) and len(v)==2:
             low, high = v

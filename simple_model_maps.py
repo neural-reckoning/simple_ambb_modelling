@@ -27,10 +27,9 @@
 # * **Sensitivity analysis** somehow
 # * sampling/smoothing on population/map plot
 
-# + {"cell_type": "markdown", "heading_collapsed": true}
 # ## Common code / data
 
-# + {"init_cell": true, "hidden": true}
+# + {"init_cell": true}
 # %matplotlib notebook
 from brian2 import *
 from model_explorer_jupyter import *
@@ -40,11 +39,9 @@ from scipy.interpolate import interp1d
 from matplotlib import cm
 from sklearn.manifold import TSNE, LocallyLinearEmbedding, Isomap, SpectralEmbedding, MDS
 from sklearn.decomposition import PCA
-import joblib
 from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter
-
-BrianLogger.suppress_name('resolution_conflict')
+from simple_model import *
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
@@ -52,130 +49,8 @@ def normed(X, *args):
 
 progress_slider, update_progress = brian2_progress_reporter()
 
-mem = joblib.Memory(location='.', bytes_limit=10*1024**3, verbose=0) # 10 GB max cache
-
-# + {"hidden": true, "cell_type": "markdown"}
-# Raw data we want to model
-
-# + {"init_cell": true, "hidden": true}
-dietz_fm = array([4, 8, 16, 32, 64])*Hz
-dietz_phase = array([37, 40, 62, 83, 115])*pi/180
-dietz_phase_std = array([46, 29, 29, 31, 37])*pi/180
-
 # + {"cell_type": "markdown", "heading_collapsed": true}
 # ## Definition of basic model
-
-# + {"init_cell": true, "hidden": true}
-@mem.cache
-def simple_model(N, params):
-    min_tauihc = 0.1*ms
-    eqs = '''
-    carrier = clip(cos(2*pi*fc*t), 0, Inf) : 1
-    A_raw = (carrier*gain*0.5*(1-cos(2*pi*fm*t)))**gamma : 1
-    dA_filt/dt = (A_raw-A)/(int(tauihc<min_tauihc)*1*second+tauihc) : 1
-    A = A_raw*int(tauihc<min_tauihc)+A_filt*int(tauihc>=min_tauihc) : 1
-    dQ/dt = -k*Q*A+R*(1-Q) : 1
-    AQ = A*Q : 1
-    dAe/dt = (AQ-Ae)/taue : 1
-    dAi/dt = (AQ-Ai)/taui : 1
-    out = clip(Ae-beta*Ai, 0, Inf) : 1
-    gain = 10**(level/20.) : 1
-    R = (1-alpha)/taua : Hz
-    k = alpha/taua : Hz
-    fc = fc_Hz*Hz : Hz
-    fc_Hz : 1
-    fm : Hz
-    tauihc = tauihc_ms*ms : second
-    taue = taue_ms*ms : second
-    taui = taui_ms*ms : second
-    taua = taua_ms*ms : second
-    tauihc_ms : 1
-    taue_ms : 1
-    taui_ms : 1
-    taua_ms : 1
-    alpha : 1
-    beta : 1
-    gamma : 1
-    level : 1
-    # Accumulation variables
-    accum_sum_out : 1
-    accum_sum_out_rising : 1
-    accum_sum_out_falling : 1
-    accum_argmax_out : second
-    accum_max_out : 1
-    accum_weighted_sum_cos_phase : 1
-    accum_weighted_sum_sin_phase : 1
-    '''
-    G = NeuronGroup(N, eqs, method='euler', dt=0.1*ms)
-    G.set_states(params)
-    G.tauihc_ms['tauihc_ms<min_tauihc/ms'] = 0
-    G.Q = 1
-    net = Network(G)
-    net.run(.25*second, report=update_progress, report_period=1*second)
-    rr = G.run_regularly('''
-        accum_sum_out += out
-        phase = (2*pi*fm*t)%(2*pi)
-        accum_sum_out_rising += out*int(phase<pi)
-        accum_sum_out_falling += out*int(phase>=pi)
-        accum_weighted_sum_cos_phase += out*cos(phase)
-        accum_weighted_sum_sin_phase += out*sin(phase)
-        is_larger = out>accum_max_out
-        accum_max_out = int(not is_larger)*accum_max_out+int(is_larger)*out
-        accum_argmax_out = int(not is_larger)*accum_argmax_out+int(is_larger)*t
-        ''',
-        when='end')
-    net.add(rr)
-    G.accum_sum_out['accum_sum_out==0'] = 1
-    net.run(.25*second, report=update_progress, report_period=1*second)
-    c = G.accum_weighted_sum_cos_phase[:]
-    s = G.accum_weighted_sum_sin_phase[:]
-    weighted_phase = (angle(c+1j*s)+2*pi)%(2*pi)
-    vs = sqrt(c**2+s**2)/G.accum_sum_out[:]
-    mean_fr = G.accum_sum_out[:]/(.25*second/G.dt)
-    onsettiness = 0.5*(1+(G.accum_sum_out_rising[:]-G.accum_sum_out_falling[:])/G.accum_sum_out[:])
-    return G.accum_argmax_out[:], G.accum_max_out[:], weighted_phase, vs, mean_fr, onsettiness
-
-def extract_peak_phase(N, out, error_func, weighted, interpolate_bmf=False):
-    fm = dietz_fm
-    n_fm = len(fm)
-    out_peak, peak_fr, weighted_phase, vs, mean_fr, onsettiness = out
-    out_peak.shape = peak_fr.shape = weighted_phase.shape = vs.shape = mean_fr.shape = onsettiness.shape = (N, n_fm)
-    if weighted:
-        peak_phase = weighted_phase
-    else:
-        peak_phase = (out_peak*2*pi*fm[newaxis, :]) % (2*pi) # shape (N, n_fm)
-    max_peak_fr = amax(peak_fr, axis=1)[:, newaxis]
-    max_peak_fr[max_peak_fr==0] = 1
-    max_mean_fr = amax(mean_fr, axis=1)[:, newaxis]
-    max_mean_fr[max_mean_fr==0] = 1
-    norm_peak_fr = peak_fr/max_peak_fr
-    norm_mean_fr = mean_fr/max_mean_fr
-    mse = error_func(dietz_phase[newaxis, :], peak_phase) # sum over fm, mse has shape N
-    mse_norm = (mse-amin(mse))/(amax(mse)-amin(mse))
-    peak_bmf = asarray(dietz_fm)[argmax(norm_peak_fr, axis=1)]
-    mean_bmf = asarray(dietz_fm)[argmax(norm_mean_fr, axis=1)]
-    vs_bmf = asarray(dietz_fm)[argmax(vs, axis=1)]
-    onsettiness_bmf = asarray(dietz_fm)[argmax(onsettiness, axis=1)]
-    peak_moddepth = 1-amin(norm_peak_fr, axis=1)
-    mean_moddepth = 1-amin(norm_mean_fr, axis=1)
-    vs_moddepth = amax(vs, axis=1)-amin(vs, axis=1)
-    onsettiness_moddepth = amax(onsettiness, axis=1)-amin(onsettiness, axis=1)
-    # interpolated bmf
-    if interpolate_bmf:
-        fm_interp = linspace(4, 64, 100)
-        for cx in xrange(N):
-            for bmf, fr in [(peak_bmf, norm_peak_fr),
-                            (mean_bmf, norm_mean_fr),
-                            (vs_bmf, vs),
-                            (onsettiness_bmf, onsettiness)]:
-                cur_fr = fr[cx, :]
-                fr_interp_func = interp1d(dietz_fm, cur_fr, kind='quadratic')
-                bmf[cx] = fm_interp[argmax(fr_interp_func(fm_interp))]
-    raw_measures = {'peak': peak_fr, 'mean': mean_fr, 'vs': vs, 'onsettiness': onsettiness}
-    norm_measures = {'peak': norm_peak_fr, 'mean': norm_mean_fr, 'vs': vs, 'onsettiness': onsettiness}
-    bmf = {'peak': peak_bmf, 'mean': mean_bmf, 'vs': vs_bmf, 'onsettiness': onsettiness_bmf}
-    moddepth = {'peak': peak_moddepth, 'mean': mean_moddepth, 'vs': vs_moddepth, 'onsettiness': onsettiness_moddepth}
-    return peak_phase, mse, mse_norm, raw_measures, norm_measures, bmf, moddepth
 
 # + {"hidden": true, "heading_collapsed": true, "cell_type": "markdown"}
 # ### Specifications of parameters
@@ -256,33 +131,22 @@ def plot_map2d_mse_mtf(selected_axes, **kwds):
     detail_settings = dict(Low=10, Medium=40, High=100)
     M = detail_settings[kwds.pop('detail')]
     weighted = kwds.pop('weighted')
-    axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
-    axis_ranges['fm'] = dietz_fm
-    array_kwds = meshed_arguments(selected_axes+('fm',), kwds, axis_ranges)
     vx, vy = selected_axes
-    shape = array_kwds[vx].shape
-    N = array_kwds[vx].size
-    array_kwds[vx].shape = N
-    array_kwds[vy].shape = N
-    array_kwds['fm'].shape = N
     n_fm = len(dietz_fm)
+    axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
+    array_kwds = meshed_arguments(selected_axes, kwds, axis_ranges)
     # Run the model
-    out = simple_model(N, array_kwds)
-    peak_phase, mse, mse_norm, raw_measures, norm_measures, bmf, moddepth = extract_peak_phase(
-                    M*M, out, error_func, weighted, interpolate_bmf=interpolate_bmf)
-    # Analyse the data
-    for img in [peak_phase]+raw_measures.values()+norm_measures.values():
-        img.shape = (M, M, n_fm)
-    for img in bmf.values()+moddepth.values()+[mse, mse_norm]:
-        img.shape = (M, M)
-    vs = raw_measures['vs']
+    res = simple_model(M*M, array_kwds, update_progress=update_progress)
+    res = simple_model_results(M*M, res, error_func, weighted, interpolate_bmf=interpolate_bmf, shape=(M, M))
+    mse = res.mse
+    vs = res.raw_measures['vs']
     # Properties of lowest MSE value
     idx_best_y, idx_best_x = unravel_index(argmin(mse), mse.shape)
     xbest = axis_ranges[vx][idx_best_x]
     ybest = axis_ranges[vy][idx_best_y]
-    best_peak_phase = peak_phase[idx_best_y, idx_best_x, :]
+    best_peak_phase = res.peak_phase[idx_best_y, idx_best_x, :]
     best_measures = {}
-    for mname, mval in norm_measures.items():
+    for mname, mval in res.norm_measures.items():
         best_measures[mname] = mval[idx_best_y, idx_best_x, :]
     print 'Best: {vx} = {xbest}, {vy} = {ybest}'.format(vx=vx, vy=vy, xbest=xbest, ybest=ybest)
     # Plot the data
@@ -309,8 +173,8 @@ def plot_map2d_mse_mtf(selected_axes, **kwds):
                  extent=extent)
     clabel(cs, colors='w', inline=True, fmt='%d')
 
-    for oy, (pname, pdict, vsname, vsfunc) in enumerate([('BMF', bmf, 'Min VS', amin),
-                                                         ('Modulation depth', moddepth, 'Max VS', amax)]):
+    for oy, (pname, pdict, vsname, vsfunc) in enumerate([('BMF', res.bmf, 'Min VS', amin),
+                                                         ('Modulation depth', res.moddepth, 'Max VS', amax)]):
         for ox, mname in enumerate(['peak', 'mean', 'vs', 'onsettiness', vsname]):
             if mname!=vsname:
                 mval = pdict[mname]
@@ -329,7 +193,7 @@ def plot_map2d_mse_mtf(selected_axes, **kwds):
                 labelit(vsname)
 
     subplot(gs[2, :2])
-    plot(dietz_fm/Hz, reshape(peak_phase, (-1, n_fm)).T*180/pi, '-', color=(0.2, 0.7, 0.2, 0.2), label='Model (all)')
+    plot(dietz_fm/Hz, reshape(res.peak_phase, (-1, n_fm)).T*180/pi, '-', color=(0.2, 0.7, 0.2, 0.2), label='Model (all)')
     plot(dietz_fm/Hz, best_peak_phase*180/pi, '-o', lw=2, label='Model (best)')
     errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--or', label='Data')
     handles, labels = gca().get_legend_handles_labels()
@@ -344,7 +208,7 @@ def plot_map2d_mse_mtf(selected_axes, **kwds):
 
     for ox, mname in enumerate(['peak', 'mean', 'vs', 'onsettiness']):
         subplot(gs[2, 2+ox])
-        plot(dietz_fm/Hz, reshape(norm_measures[mname], (M*M, n_fm)).T, '-', color=(0.2, 0.7, 0.2, 0.2))
+        plot(dietz_fm/Hz, reshape(res.norm_measures[mname], (M*M, n_fm)).T, '-', color=(0.2, 0.7, 0.2, 0.2))
         plot(dietz_fm/Hz, best_measures[mname], '-o')
         fm_interp = linspace(4, 64, 100)
         fr_interp_func = interp1d(dietz_fm/Hz, best_measures[mname], kind='quadratic')
@@ -354,7 +218,7 @@ def plot_map2d_mse_mtf(selected_axes, **kwds):
         ylabel('Relative MTF')
     
     subplot(gs[2, -1])
-    imshow(mean(norm_measures['onsettiness'], axis=2), origin='lower left', aspect='auto',
+    imshow(mean(res.norm_measures['onsettiness'], axis=2), origin='lower left', aspect='auto',
            interpolation='nearest', vmin=0, vmax=1, extent=extent)
     labelit('Onsettiness')
 
@@ -378,26 +242,18 @@ def plot_population_space(**kwds):
     error_func = error_functions[error_func_name]
     interpolate_bmf = kwds.pop('interpolate_bmf')
     # Set up array keywords
-    array_kwds = {}
-    param_values = {}
     varying_params = set(k for k, (low, high) in kwds.items() if low!=high)
-    for k, (low, high) in kwds.items():
-        v = rand(N)*(high-low)+low
-        param_values[k] = v
-        fm, v = meshgrid(dietz_fm, v) # fm and v have shape (N, len(dietz_fm))!
-        fm.shape = fm.size
-        v.shape = v.size
-        array_kwds['fm'] = fm
-        array_kwds[k] = v
     # Run the model
-    out = simple_model(N*len(dietz_fm), array_kwds)
-    peak_phase, mse, mse_norm, raw_measures, norm_measures, bmf, moddepth = extract_peak_phase(
-                    N, out, error_func, weighted, interpolate_bmf=interpolate_bmf)
+    res = simple_model(N, kwds, update_progress=update_progress)
+    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=interpolate_bmf)
+    mse = res.mse
+    peak_phase = res.peak_phase
+    param_values = res.raw.params
     # Properties of lowest MSE value
     idx_best = argmin(mse)
     best_peak_phase = peak_phase[idx_best, :]
     best_measures = {}
-    for mname, mval in norm_measures.items():
+    for mname, mval in res.norm_measures.items():
         best_measures[mname] = mval[idx_best, :]    
     bestvals = []
     for k in kwds.keys():
@@ -422,7 +278,7 @@ def plot_population_space(**kwds):
     computed_histograms = {}
     computed_histogram_names = []
     num_histograms = 0
-    for pname, pdict in [('BMF', bmf), ('MD', moddepth)]:
+    for pname, pdict in [('BMF', res.bmf), ('MD', res.moddepth)]:
         for ptype in ['peak', 'mean', 'vs', 'onsettiness']:
             num_histograms += 1
             hname = '%s (%s)' % (pname, ptype)
@@ -433,9 +289,9 @@ def plot_population_space(**kwds):
     computed_histogram_names.extend(['Min VS', 'Max VS', 'Onsettiness'])
     for error_cutoff in error_cutoffs:
         KI = keep_indices[error_cutoff]
-        minvs = amin(raw_measures['vs'], axis=1)[KI]
-        maxvs = amax(raw_measures['vs'], axis=1)[KI]
-        mean_onsettiness = mean(raw_measures['onsettiness'], axis=1)[KI]
+        minvs = amin(res.raw_measures['vs'], axis=1)[KI]
+        maxvs = amax(res.raw_measures['vs'], axis=1)[KI]
+        mean_onsettiness = mean(res.raw_measures['onsettiness'], axis=1)[KI]
         computed_histograms['Min VS', error_cutoff] = minvs
         computed_histograms['Max VS', error_cutoff] = maxvs
         computed_histograms['Onsettiness', error_cutoff] = mean_onsettiness
@@ -461,12 +317,12 @@ def plot_population_space(**kwds):
     ylabel('Extracted phase (deg)')
 
     for ox, mname in enumerate(['peak', 'mean', 'vs', 'onsettiness']):
-        mval = norm_measures[mname]
+        mval = res.norm_measures[mname]
         bestmval = best_measures[mname]
         subplot(gs[0, 1+ox])
         lines = plot(dietz_fm/Hz, mval[:maxshow, :].T, '-')
         for i, line in enumerate(lines):
-            line.set_color(cm.YlGnBu_r(mse_norm[i], alpha=transp))
+            line.set_color(cm.YlGnBu_r(res.mse_norm[i], alpha=transp))
         lines[argmin(mse[:maxshow])].set_alpha(1)
         lines[argmax(mse[:maxshow])].set_alpha(1)
         lines[argmin(mse[:maxshow])].set_label('Model (all, best MSE)')
@@ -539,47 +395,29 @@ def plot_population_map(selected_axes, **kwds):
     weighted = kwds.pop('weighted')
     smoothing = kwds.pop('smoothing')
     axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
-    axis_ranges['fm'] = dietz_fm
     axis_ranges['temp'] = zeros(num_params)
-    array_kwds = meshed_arguments(selected_axes+('temp', 'fm'), kwds, axis_ranges)
+    array_kwds = meshed_arguments(selected_axes+('temp',), kwds, axis_ranges)
     del array_kwds['temp']
-    vx, vy = selected_axes
-    shape = array_kwds[vx].shape # shape will be (M, M, num_params, len(dietz_fm))
-    N = array_kwds[vx].size
-    random_params = {}
-    for k, (low, high) in kwds.items():
-        if k not in selected_axes:
-            v = rand(M*M*num_params)*(high-low)+low
-            random_params[k] = v
-            v = tile(v[:, newaxis], (1, len(dietz_fm)))
-            v.shape = v.size
-            array_kwds[k] = v
-        array_kwds[k].shape = N
-    array_kwds['fm'].shape = N
-    n_fm = len(dietz_fm)
     # Run the model
-    out = simple_model(N, array_kwds)
-    peak_phase, mse, mse_norm, raw_measures, norm_measures, bmf, moddepth = extract_peak_phase(
-                    M*M*num_params, out, error_func, weighted, interpolate_bmf=interpolate_bmf)
+    res = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
+    res = simple_model_results(M*M*num_params, res, error_func, weighted, shape=(M, M, num_params))
+    mse = res.mse
+    vx, vy = selected_axes
     # Analyse the data
-    for img in [peak_phase]+raw_measures.values()+norm_measures.values():
-        img.shape = (M, M, num_params, n_fm)
-    for img in bmf.values()+moddepth.values()+[mse, mse_norm]:
-        img.shape = (M, M, num_params)
-    vs = raw_measures['vs']    
+    vs = res.raw_measures['vs']    
     mse = mse*180/pi
     mse_summary = pop_summary(mse, mse)
     mse_close = 1.0*sum(mse<error_cutoff_deg, axis=2)/num_params
     summary_measures = OrderedDict()
-    for dname, d in [('bmf', bmf), ('moddepth', moddepth)]:
+    for dname, d in [('bmf', res.bmf), ('moddepth', res.moddepth)]:
         for k, v in d.items():
             s = dname+'/'+k
             summary_measures[s] = pop_summary(mse, v)
-    summary_measures['mean/vs'] = pop_summary(mse, mean(raw_measures['vs'], axis=3))
-    summary_measures['mean/onsettiness'] = pop_summary(mse, mean(raw_measures['onsettiness'], axis=3))
+    summary_measures['mean/vs'] = pop_summary(mse, mean(res.raw_measures['vs'], axis=3))
+    summary_measures['mean/onsettiness'] = pop_summary(mse, mean(res.raw_measures['onsettiness'], axis=3))
     for k, (low, high) in kwds.items():
         if k not in selected_axes and low!=high:
-            summary_measures['param/'+k] = pop_summary(mse, reshape(random_params[k], (M, M, num_params)))
+            summary_measures['param/'+k] = pop_summary(mse, reshape(res.raw.params[k], (M, M, num_params)))
     # Plot the data
     if smoothing:
         mse_summary = gaussian_filter(mse_summary, blur_width*M, mode='nearest')
@@ -597,6 +435,12 @@ def plot_population_map(selected_axes, **kwds):
     num_rows = int(ceil(len(summary_measures)/4.0))+1
     curfig = figure(dpi=65, figsize=(14, (num_rows+1)*2.5))
     gs = GridSpec(num_rows, 4, height_ratios=[2]+[1]*(num_rows-1))
+
+    def contourit():
+        cs = contour(mse_summary, origin='lower',
+                     levels=[15, 30, 45], colors='w',
+                     extent=extent)
+        clabel(cs, colors='w', inline=True, fmt='%d')
     
     subplot(gs[0, :2])
     imshow(mse_summary, origin='lower left', aspect='auto',
@@ -605,10 +449,7 @@ def plot_population_map(selected_axes, **kwds):
     ylabel(sliders[vy].description)
     cb = colorbar()
     cb.set_label(error_func_name, rotation=270, labelpad=20)
-    cs = contour(mse_summary, origin='lower',
-                 levels=[15, 30, 45], colors='w',
-                 extent=extent)
-    clabel(cs, colors='w', inline=True, fmt='%d')
+    contourit()
 
     subplot(gs[0, 2:])
     imshow(100.*mse_close, origin='lower left', aspect='auto',
@@ -617,6 +458,7 @@ def plot_population_map(selected_axes, **kwds):
     ylabel(sliders[vy].description)
     cb = colorbar()
     cb.set_label("Percent within cutoff", rotation=270, labelpad=20)
+    contourit()
     
     for i, (k, v) in enumerate(summary_measures.items()):
         subplot(gs[1+i//4, i%4])
@@ -631,6 +473,7 @@ def plot_population_map(selected_axes, **kwds):
         xlabel(sliders[vx].description)
         ylabel(sliders[vy].description)
         cb = colorbar()
+        contourit()
         title(k)
 
     tight_layout()
@@ -764,6 +607,8 @@ models = [('2d map', map2d(simple_model, vs2d_mse_mtf), options2d_mse_mtf,
 
 # Create model explorer, and jump immediately to results page
 modex = model_explorer(models)
-modex.widget_model_type.value = 'Population/map'
+# modex.widget_model_type.value = '2d map'
+modex.widget_model_type.value = 'Population'
+#modex.widget_model_type.value = 'Population/map'
 modex.tabs.selected_index = 1
 display(modex)
