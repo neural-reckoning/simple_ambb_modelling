@@ -143,8 +143,10 @@ def popmap(M, num_params, blur_width, error_cutoff_deg,
     if smoothing:
         mse_summary = gaussian_filter(mse_summary, blur_width*M, mode='nearest')
         mse_summary = zoom(mse_summary, 100./M, order=1)
+        mse_summary = gaussian_filter(mse_summary, blur_width*100., mode='nearest')
         mse_close = gaussian_filter(mse_close, blur_width*M, mode='nearest')
         mse_close = zoom(mse_close, 100./M, order=1)
+        mse_close = gaussian_filter(mse_close, blur_width*100., mode='nearest')
     extent = (kwds[vx]+kwds[vy])
     
     subplot(loc_summary)
