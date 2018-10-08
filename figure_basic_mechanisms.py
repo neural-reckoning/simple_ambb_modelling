@@ -24,72 +24,12 @@
 # +
 # %matplotlib notebook
 from brian2 import *
-from model_explorer_jupyter import *
-import ipywidgets as ipw
-from collections import OrderedDict
-from matplotlib import cm
-import joblib
-
-BrianLogger.suppress_name('resolution_conflict')
+from simple_model import *
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
     return X/m
-
-mem = joblib.Memory(location='.', bytes_limit=10*1024**3, verbose=0) # 10 GB max cache
 # -
-
-# Raw data from Dietz et al. 2013
-
-dietz_fm = array([4, 8, 16, 32, 64])*Hz
-dietz_phase = array([37, 40, 62, 83, 115])*pi/180
-dietz_phase_std = array([46, 29, 29, 31, 37])*pi/180
-
-# Simple model definition, all details.
-
-@mem.cache
-def simple_model(**params):
-    N = len(dietz_fm)
-    min_tauihc = 0.1*ms
-    eqs = '''
-    carrier = clip(cos(2*pi*fc*t), 0, Inf) : 1
-    A_raw = (carrier*gain*0.5*(1-cos(2*pi*fm*t)))**gamma : 1
-    dA_filt/dt = (A_raw-A)/(int(tauihc<min_tauihc)*1*second+tauihc) : 1
-    A = A_raw*int(tauihc<min_tauihc)+A_filt*int(tauihc>=min_tauihc) : 1
-    dQ/dt = -k*Q*A+R*(1-Q) : 1
-    AQ = A*Q : 1
-    dAe/dt = (AQ-Ae)/taue : 1
-    dAi/dt = (AQ-Ai)/taui : 1
-    out = clip(Ae-beta*Ai, 0, Inf) : 1
-    gain = 10**(level/20.) : 1
-    R = (1-alpha)/taua : Hz
-    k = alpha/taua : Hz
-    fc = fc_Hz*Hz : Hz
-    fc_Hz : 1
-    fm : Hz
-    tauihc = tauihc_ms*ms : second
-    taue = taue_ms*ms : second
-    taui = taui_ms*ms : second
-    taua = taua_ms*ms : second
-    tauihc_ms : 1
-    taue_ms : 1
-    taui_ms : 1
-    taua_ms : 1
-    alpha : 1
-    beta : 1
-    gamma : 1
-    level : 1
-    '''
-    G = NeuronGroup(N, eqs, method='euler', dt=0.1*ms)
-    G.set_states(params)
-    G.tauihc_ms['tauihc_ms<min_tauihc/ms'] = 0
-    G.Q = 1
-    M = StateMonitor(G, 'out', record=True)
-    net = Network(G)
-    net.run(.25*second)
-    net.add(M)
-    net.run(.25*second)
-    return M.t[:], M.out[:]
 
 # First row: pure differentiation
 
@@ -151,9 +91,9 @@ def with_model(name, row, only_this=False, **params):
     if only_this:
         figure(dpi=75, figsize=(10, 3.5))
         row = 1
-    params['fm'] = dietz_fm
-    t, out = simple_model(**params)
-    out = reshape(out, (len(dietz_fm), len(t)))
+    res = simple_model(1, params, record=['out'])
+    t = res.t
+    out = reshape(res.out, (len(dietz_fm), len(t)))
     n = array(around(0.25*second*dietz_fm), dtype=int)
     idx = t[newaxis, :]<(n/dietz_fm)[:, newaxis]
     out[idx] = 0

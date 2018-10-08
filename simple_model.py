@@ -79,6 +79,7 @@ def simple_model(N, params, record=None, update_progress=None):
     fm = dietz_fm
     for k, v in params2d.items():
         if isinstance(v, ndarray) and v.size>1:
+            v = reshape(v, v.size)
             fm, v = meshgrid(dietz_fm, v) # fm and v have shape (N, len(dietz_fm))
             fm.shape = fm.size
             v.shape = v.size
@@ -128,7 +129,10 @@ def simple_model(N, params, record=None, update_progress=None):
         )
     if record:
         for name in record:
-            setattr(res, name, getattr(M, name)[:, :])
+            v = getattr(M, name)[:, :]
+            v.shape = (N, len(dietz_fm), -1)
+            setattr(res, name, v)
+        res.t = M.t[:]
     return res
 
 @mem.cache
@@ -191,5 +195,6 @@ def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=Fal
         norm_measures=norm_measures,
         bmf=bmf,
         moddepth=moddepth,
+        raw=out,
         )
     return res

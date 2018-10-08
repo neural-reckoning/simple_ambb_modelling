@@ -21,24 +21,10 @@
 
 # # Cell types figure (unfinished)
 
-# +
 # %matplotlib notebook
 from simple_model import *
 from brian2 import *
-from model_explorer_jupyter import *
-import ipywidgets as ipw
 from collections import OrderedDict
-from scipy.interpolate import interp1d
-from matplotlib import cm
-from matplotlib.gridspec import GridSpecFromSubplotSpec
-import joblib
-from scipy.ndimage.interpolation import zoom
-from scipy.ndimage.filters import gaussian_filter
-
-def normed(X, *args):
-    m = max(amax(abs(Y)) for Y in (X,)+args)
-    return X/m
-# -
 
 # Error functions
 

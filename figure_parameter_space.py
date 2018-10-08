@@ -24,13 +24,10 @@
 # TODO:
 #
 # * following parameters should be better for popmap: taui_ms=(3, 7), level=(0, 20), taua_ms=(0.5, 5), beta=(0, 2), alpha=(0, 0.99), taue_ms=(0.1, 1)
-# * Use accumulators to save memory and allow for larger runs
 
 # +
 # %matplotlib notebook
 from brian2 import *
-from model_explorer_jupyter import *
-import ipywidgets as ipw
 from collections import OrderedDict
 from scipy.interpolate import interp1d
 from matplotlib import cm
@@ -39,94 +36,12 @@ import joblib
 from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter
 from sklearn.mixture import BayesianGaussianMixture
-
-BrianLogger.suppress_name('resolution_conflict')
+from simple_model import *
+from model_explorer_jupyter import meshed_arguments
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
     return X/m
-
-mem = joblib.Memory(location='.', bytes_limit=10*1024**3, verbose=0) # 10 GB max cache
-# -
-
-# Raw data we want to model
-
-dietz_fm = array([4, 8, 16, 32, 64])*Hz
-dietz_phase = array([37, 40, 62, 83, 115])*pi/180
-dietz_phase_std = array([46, 29, 29, 31, 37])*pi/180
-
-# Basic model definitions
-
-# +
-@mem.cache
-def simple_model(N, params):
-    min_tauihc = 0.1*ms
-    eqs = '''
-    carrier = clip(cos(2*pi*fc*t), 0, Inf) : 1
-    A_raw = (carrier*gain*0.5*(1-cos(2*pi*fm*t)))**gamma : 1
-    dA_filt/dt = (A_raw-A)/(int(tauihc<min_tauihc)*1*second+tauihc) : 1
-    A = A_raw*int(tauihc<min_tauihc)+A_filt*int(tauihc>=min_tauihc) : 1
-    dQ/dt = -k*Q*A+R*(1-Q) : 1
-    AQ = A*Q : 1
-    dAe/dt = (AQ-Ae)/taue : 1
-    dAi/dt = (AQ-Ai)/taui : 1
-    out = clip(Ae-beta*Ai, 0, Inf) : 1
-    gain = 10**(level/20.) : 1
-    R = (1-alpha)/taua : Hz
-    k = alpha/taua : Hz
-    fc = fc_Hz*Hz : Hz
-    fc_Hz : 1
-    fm : Hz
-    tauihc = tauihc_ms*ms : second
-    taue = taue_ms*ms : second
-    taui = taui_ms*ms : second
-    taua = taua_ms*ms : second
-    tauihc_ms : 1
-    taue_ms : 1
-    taui_ms : 1
-    taua_ms : 1
-    alpha : 1
-    beta : 1
-    gamma : 1
-    level : 1
-    '''
-    G = NeuronGroup(N, eqs, method='euler', dt=0.1*ms)
-    G.set_states(params)
-    G.tauihc_ms['tauihc_ms<min_tauihc/ms'] = 0
-    G.Q = 1
-    M = StateMonitor(G, 'out', record=True)
-    net = Network(G)
-    net.run(.25*second)
-    net.add(M)
-    net.run(.25*second)
-    return M.t[:], M.out[:]
-
-def extract_peak_phase(N, t, out, error_func, weighted, interpolate_bmf=False):
-    out = reshape(out, (N, len(dietz_fm), len(t)))
-    fm = dietz_fm
-    n = array(around(0.25*second*fm), dtype=int)
-    idx = (t[newaxis, newaxis, :]<(n/fm)[newaxis, :, newaxis])+zeros(out.shape, dtype=bool)
-    out[idx] = 0
-    if weighted:
-        phase = (2*pi*fm[newaxis, :, newaxis]*t[newaxis, newaxis, :]) % (2*pi)
-        peak_phase = (angle(sum(out*exp(1j*phase), axis=2))+2*pi)%(2*pi)
-    else:
-        peak = t[argmax(out, axis=2)] # shape (N, n_fm)
-        peak_phase = (peak*2*pi*fm[newaxis, :]) % (2*pi) # shape (N, n_fm)
-    peak_fr = amax(out, axis=2) # shape (N, n_fm)
-    norm_peak_fr = peak_fr/amax(peak_fr, axis=1)[:, newaxis]
-    mse = error_func(dietz_phase[newaxis, :], peak_phase) # sum over fm, mse has shape N
-    mse_norm = (mse-amin(mse))/(amax(mse)-amin(mse))
-    bmf = asarray(dietz_fm)[argmax(norm_peak_fr, axis=1)]
-    moddepth = 1-amin(norm_peak_fr, axis=1)
-    # interpolated bmf
-    if interpolate_bmf:
-        fm_interp = linspace(4, 64, 100)
-        for cx in xrange(N):
-            cur_fr = norm_peak_fr[cx, :]
-            fr_interp_func = interp1d(dietz_fm, cur_fr, kind='quadratic')
-            bmf[cx] = fm_interp[argmax(fr_interp_func(fm_interp))]
-    return peak_phase, peak_fr, norm_peak_fr, mse, mse_norm, bmf, moddepth
 # -
 
 # Error functions
@@ -163,30 +78,17 @@ def map2d(M, weighted, error_func_name, **kwds):
     global curfig
     # Set up ranges of variables, and generate arguments to pass to model function
     error_func = error_functions[error_func_name]
-    selected_axes = ('alpha', 'beta')
+    vx, vy = selected_axes = ('alpha', 'beta')
     axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
-    axis_ranges['fm'] = dietz_fm
-    array_kwds = meshed_arguments(selected_axes+('fm',), kwds, axis_ranges)
-    vx, vy = selected_axes
-    shape = array_kwds[vx].shape
-    N = array_kwds[vx].size
-    array_kwds[vx].shape = N
-    array_kwds[vy].shape = N
-    array_kwds['fm'].shape = N
+    array_kwds = meshed_arguments(selected_axes, kwds, axis_ranges)
     # Run the model
-    t, out = simple_model(N, array_kwds)
-    (all_peak_phase, all_peak_fr, all_norm_peak_fr,
-     mse, mse_norm, bmf, moddepth) = extract_peak_phase(M*M, t, out, error_func, weighted)    
-    # Analyse the data
-    peak_phase = all_peak_phase.reshape((M, M, -1))
-    norm_peak_fr = all_norm_peak_fr.reshape((M, M, -1))
-    bmf.shape = moddepth.shape = mse.shape = mse_norm.shape = (M, M)
+    res = simple_model(M*M, array_kwds)
+    res = simple_model_results(M*M, res, error_func, weighted, shape=(M, M))
+    mse = res.mse
     # Properties of lowest MSE value
     idx_best_y, idx_best_x = unravel_index(argmin(mse), mse.shape)
     xbest = axis_ranges[vx][idx_best_x]
     ybest = axis_ranges[vy][idx_best_y]
-    best_peak_phase = peak_phase[idx_best_y, idx_best_x, :]
-    best_norm_peak_fr = norm_peak_fr[idx_best_y, idx_best_x, :]
     print 'Best: {vx} = {xbest}, {vy} = {ybest}'.format(vx=vx, vy=vy, xbest=xbest, ybest=ybest)
     # Plot the data
     extent = (kwds[vx]+kwds[vy])
@@ -198,7 +100,6 @@ def map2d(M, weighted, error_func_name, **kwds):
         cb = colorbar()
         cb.set_label(titletext, rotation=270, labelpad=20)
 
-    #mse = zoom(mse, 100./M, order=1)
     mse_deg = mse*180/pi
     imshow(mse_deg, origin='lower left', aspect='auto',
            interpolation='nearest', vmin=0, extent=extent)
@@ -223,31 +124,18 @@ def popmap(M, num_params, blur_width, error_cutoff_deg,
     # always use the same random seed for cacheing
     seed(34032483)    
     # Set up ranges of variables, and generate arguments to pass to model function
-    selected_axes = ('alpha', 'beta')
+    vx, vy = selected_axes = ('alpha', 'beta')
     pop_summary = population_summary_methods[pop_summary_name]
     error_func = error_functions[error_func_name]
     axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
-    axis_ranges['fm'] = dietz_fm
     axis_ranges['temp'] = zeros(num_params)
-    array_kwds = meshed_arguments(selected_axes+('temp', 'fm'), kwds, axis_ranges)
+    array_kwds = meshed_arguments(selected_axes+('temp',), kwds, axis_ranges)
     del array_kwds['temp']
-    vx, vy = selected_axes
-    shape = array_kwds[vx].shape # shape will be (M, M, num_params, len(dietz_fm))
-    N = array_kwds[vx].size
-    for k, (low, high) in kwds.items():
-        if k not in selected_axes:
-            array_kwds[k] = rand(N)*(high-low)+low
-        array_kwds[k].shape = N
-    array_kwds['fm'].shape = N
     # Run the model
-    t, out = simple_model(N, array_kwds)
-    (all_peak_phase, all_peak_fr, all_norm_peak_fr,
-     mse, mse_norm, bmf, moddepth) = extract_peak_phase(M*M*num_params, t, out,
-                                                        error_func, weighted)
+    res = simple_model(M*M*num_params, array_kwds)
+    res = simple_model_results(M*M*num_params, res, error_func, weighted, shape=(M, M, num_params))
+    mse = res.mse
     # Analyse the data
-    peak_phase = all_peak_phase.reshape((M, M, num_params, -1))
-    norm_peak_fr = all_norm_peak_fr.reshape((M, M, num_params, -1))
-    bmf.shape = moddepth.shape = mse.shape = mse_norm.shape = (M, M, num_params)
     mse = mse*180/pi
     mse_summary = pop_summary(mse, axis=2)
     mse_close = 1.0*sum(mse<error_cutoff_deg, axis=2)/num_params
@@ -287,45 +175,35 @@ def parameter_space(N, M, M_popmap,
                     error_func_name, error_cutoffs,
                     num_examples, example_error_cutoff,
                     search_params, adapt_params, inhib_params, popmap_params,
+                    interpolate_bmf=True,
                     ):
     # always use the same random seed for cacheing
     seed(34032483)
     # Get simple parameters
     error_func = error_functions[error_func_name]
-    kwds = search_params
-    # Set up array keywords
-    array_kwds = {}
-    param_values = {}
-    for k, (low, high) in kwds.items():
-        v = rand(N)*(high-low)+low
-        param_values[k] = v
-        fm, v = meshgrid(dietz_fm, v) # fm and v have shape (N, len(dietz_fm))!
-        fm.shape = fm.size
-        v.shape = v.size
-        array_kwds['fm'] = fm
-        array_kwds[k] = v
     # Run the model
-    t, out = simple_model(N*len(dietz_fm), array_kwds)
-    out3d = reshape(out, (N, len(dietz_fm), len(t)))
-    (peak_phase, peak_fr, norm_peak_fr,
-     mse, mse_norm, bmf, moddepth) = extract_peak_phase(N, t, out, error_func, weighted)
+    res = simple_model(N, search_params)
+    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=interpolate_bmf)
+    mse = res.mse
+    peak_phase = res.peak_phase
+    norm_peak_fr = res.norm_measures['peak']
     # Properties of lowest MSE value
     idx_best = argmin(mse)
     best_peak_phase = peak_phase[idx_best, :]
     best_norm_peak_fr = norm_peak_fr[idx_best, :]
     bestvals = []
-    for k in kwds.keys():
-        v = param_values[k][idx_best]
+    for k in search_params.keys():
+        v = res.raw.params[k][idx_best]
         bestvals.append('%s=%.2f' % (k, v))
     print 'Best: ' + ', '.join(bestvals)
     # Properties of all data below error cutoff
     varying_param_values = {}
     param_value_index = {}
-    for j, (k, v) in enumerate(param_values.items()):
+    for j, (k, v) in enumerate(res.raw.params.items()):
         param_value_index[k] = j
         if amin(v)!=amax(v):
             varying_param_values[k] = v    
-    all_params = vstack(param_values.values()).T
+    all_params = vstack(res.raw.params.values()).T
     keep_indices = {}
     keep_params = {}
     for error_cutoff in error_cutoffs:
@@ -374,7 +252,7 @@ def parameter_space(N, M, M_popmap,
     subplot(gs[0, 6:])
     lines = plot(dietz_fm/Hz, norm_peak_fr.T, '-')
     for i, line in enumerate(lines):
-        line.set_color(cm.YlGnBu_r(mse_norm[i], alpha=transp))
+        line.set_color(cm.YlGnBu_r(res.mse_norm[i], alpha=transp))
     lines[argmin(mse)].set_alpha(1)
     lines[argmax(mse)].set_alpha(1)
     lines[argmin(mse)].set_label('Model (all, best MSE)')
@@ -389,12 +267,16 @@ def parameter_space(N, M, M_popmap,
     ylabel('Relative MTF')
     
     # Plot the examples
-    n = array(around(0.25*second*dietz_fm), dtype=int)
+    example_params = dict((k, v[example_indices]) for k, v in res.raw.params.items())
+    res_ex = simple_model(len(example_indices), example_params, record=['out'])
+    res_ex = simple_model_results(len(example_indices), res_ex, error_func,
+                                  weighted=weighted, interpolate_bmf=interpolate_bmf)
+    n = array(around(0.25*second*dietz_fm), dtype=int)    
     for i, j in enumerate([0, -1]):
         fm = dietz_fm[j]
         cur_n = n[j]
-        idx = logical_and(t>=(cur_n/fm), t<=((cur_n+1)/fm))
-        cur_t = t[idx]
+        idx = logical_and(res_ex.raw.t>=(cur_n/fm), res_ex.raw.t<=((cur_n+1)/fm))
+        cur_t = res_ex.raw.t[idx]
         phase = (2*pi*fm*cur_t)%(2*pi)
         env = 0.5*(1-cos(phase))
         subplot(gs[1, 4*i:4*(i+1)])
@@ -408,7 +290,7 @@ def parameter_space(N, M, M_popmap,
         xlim(0, 360)
         ax = gca().twiny()
         for ei_idx, example_index in enumerate(example_indices):
-            plot((cur_t-amin(cur_t))/ms, normed(out3d[example_index, j, idx]),
+            plot((cur_t-amin(cur_t))/ms, normed(res_ex.raw.out[ei_idx, j, idx]),
                  '-', c='C%d'%ei_idx, lw=2)
         xlabel('Time (ms)')
         xlim(0, 1/fm/ms)
@@ -433,13 +315,13 @@ def parameter_space(N, M, M_popmap,
         yticks([])
         for j, error_cutoff in enumerate(error_cutoffs[::-1]):
             hist(keep_params[error_cutoff][:, param_value_index[param_name]],
-                 bins=20, range=kwds[param_name], histtype='stepfilled',
+                 bins=20, range=search_params[param_name], histtype='stepfilled',
                  fc=(1-0.7*(j+1)/len(error_cutoffs),)*3,
                  label="Error<%d deg" % error_cutoff)
         for k, j in enumerate(example_indices):
             v = all_params[j, param_value_index[param_name]]
             axvline(v, ls='--', c='C%d'%(k), lw=2)
-            
+    
     #legend(loc='upper left', bbox_to_anchor=(1.05, 1))
     legend(loc='best') # TODO: better location
     
@@ -466,7 +348,7 @@ def parameter_space(N, M, M_popmap,
         text(0, o, s, transform=gcf().transFigure, fontsize=16)
 
         
-#N = 1000; M=20; M_popmap=10; num_params=20; blur_width=0.2 # quick, low quality
+# N = 1000; M=20; M_popmap=10; num_params=20; blur_width=0.2 # quick, low quality
 N = 10000; M=40; M_popmap=20; num_params=100; blur_width=0.05 # medium quality
 
 parameter_space(N=N, M=M, M_popmap=M_popmap, num_params=num_params, blur_width=blur_width,
@@ -487,9 +369,9 @@ parameter_space(N=N, M=M, M_popmap=M_popmap, num_params=num_params, blur_width=b
                     taui_ms=2.22, level=4.49, taua_ms=8.94, taue_ms=0.16, gamma=0.70,
                     ),
                 popmap_params=dict(
-                    taui_ms=(1, 10), level=(0, 15), taua_ms=(1, 10),
                     alpha=(0, 0.99), beta=(0, 2),
-                    taue_ms=(0.1, 1.5), gamma=(0.6, 0.9),
+                    taui_ms=(3, 7), taua_ms=(0.5, 5), taue_ms=(0.1, 1),
+                    gamma=(1, 1), level=(0, 20),
                     ),
                )
 savefig('figure_parameter_space.pdf')
