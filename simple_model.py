@@ -31,6 +31,9 @@ class Results(object): # simple heap class, we'll add attributes to it
 @mem.cache(ignore=['update_progress'])
 def simple_model(N, params, record=None, update_progress=None,
                  fm=None, minimum_initial_time=100*ms):
+    if fm is None:
+        fm = dietz_fm
+    orig_fm = fm
     min_tauihc = 0.1*ms
     eqs = '''
     carrier = clip(cos(2*pi*fc*t), 0, Inf) : 1
@@ -72,7 +75,7 @@ def simple_model(N, params, record=None, update_progress=None,
     accum_weighted_sum_cos_phase : 1
     accum_weighted_sum_sin_phase : 1
     '''
-    G = NeuronGroup(N*len(dietz_fm), eqs, method='euler', dt=0.1*ms)
+    G = NeuronGroup(N*len(fm), eqs, method='euler', dt=0.1*ms)
     rr = G.run_regularly('''
         accum_sum_out += out*do_accumulate
         phase = (2*pi*fm*t)%(2*pi)
@@ -91,12 +94,10 @@ def simple_model(N, params, record=None, update_progress=None,
             low, high = v
             params[k] = v = rand(N)*(high-low)+low
     params2d = params.copy()
-    if fm is None:
-        fm = dietz_fm
     for k, v in params2d.items():
         if isinstance(v, ndarray) and v.size>1:
             v = reshape(v, v.size)
-            fm, v = meshgrid(dietz_fm, v) # fm and v have shape (N, len(dietz_fm))
+            fm, v = meshgrid(orig_fm, v) # fm and v have shape (N, len(dietz_fm))
             fm.shape = fm.size
             v.shape = v.size
             params2d[k] = v
@@ -158,8 +159,12 @@ def simple_model(N, params, record=None, update_progress=None,
     return res
 
 @mem.cache
-def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=False, shape=None):
-    fm = dietz_fm
+def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=False, shape=None, fm=None):
+    if fm is None:
+        fm = dietz_fm
+        dietz_fm_idx = arange(len(dietz_fm))
+    else:
+        dietz_fm_idx = argmin((fm[:, newaxis]-dietz_fm[newaxis, :])**2, axis=0)
     n_fm = len(fm)
     if shape is None:
         shape = (N,)
@@ -180,12 +185,12 @@ def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=Fal
     max_mean_fr[max_mean_fr==0] = 1
     norm_peak_fr = peak_fr/max_peak_fr
     norm_mean_fr = mean_fr/max_mean_fr
-    mse = error_func(dietz_phase[newaxis, :], peak_phase) # sum over fm, mse has shape N
+    mse = error_func(dietz_phase[newaxis, :], peak_phase[:, dietz_fm_idx]) # sum over fm, mse has shape N
     mse_norm = (mse-amin(mse))/(amax(mse)-amin(mse))
-    peak_bmf = asarray(dietz_fm)[argmax(norm_peak_fr, axis=1)]
-    mean_bmf = asarray(dietz_fm)[argmax(norm_mean_fr, axis=1)]
-    vs_bmf = asarray(dietz_fm)[argmax(vs, axis=1)]
-    onsettiness_bmf = asarray(dietz_fm)[argmax(onsettiness, axis=1)]
+    peak_bmf = asarray(fm)[argmax(norm_peak_fr, axis=1)]
+    mean_bmf = asarray(fm)[argmax(norm_mean_fr, axis=1)]
+    vs_bmf = asarray(fm)[argmax(vs, axis=1)]
+    onsettiness_bmf = asarray(fm)[argmax(onsettiness, axis=1)]
     peak_moddepth = 1-amin(norm_peak_fr, axis=1)
     mean_moddepth = 1-amin(norm_mean_fr, axis=1)
     vs_moddepth = amax(vs, axis=1)-amin(vs, axis=1)
@@ -199,7 +204,7 @@ def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=Fal
                             (vs_bmf, vs),
                             (onsettiness_bmf, onsettiness)]:
                 cur_fr = fr[cx, :]
-                fr_interp_func = interp1d(dietz_fm, cur_fr, kind='quadratic')
+                fr_interp_func = interp1d(fm, cur_fr, kind='quadratic')
                 bmf[cx] = fm_interp[argmax(fr_interp_func(fm_interp))]
     raw_measures = {'peak': peak_fr, 'mean': mean_fr, 'vs': vs, 'onsettiness': onsettiness}
     norm_measures = {'peak': norm_peak_fr, 'mean': norm_mean_fr, 'vs': vs, 'onsettiness': onsettiness}
