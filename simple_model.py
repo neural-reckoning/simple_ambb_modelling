@@ -1,7 +1,5 @@
 '''
-Unfinished module for refactoring multiple notebooks
-
-TODO: handle fm that isn't a multiple of 4 Hz
+The core single neuron model.
 '''
 from brian2 import *
 from scipy.interpolate import interp1d
@@ -31,7 +29,8 @@ class Results(object): # simple heap class, we'll add attributes to it
 
 
 @mem.cache(ignore=['update_progress'])
-def simple_model(N, params, record=None, update_progress=None):
+def simple_model(N, params, record=None, update_progress=None,
+                 fm=None, minimum_initial_time=100*ms):
     min_tauihc = 0.1*ms
     eqs = '''
     carrier = clip(cos(2*pi*fc*t), 0, Inf) : 1
@@ -62,6 +61,9 @@ def simple_model(N, params, record=None, update_progress=None):
     gamma : 1
     level : 1
     # Accumulation variables
+    start_time : second
+    end_time : second
+    do_accumulate = 1.0*int(t>=start_time and t<end_time) : 1
     accum_sum_out : 1
     accum_sum_out_rising : 1
     accum_sum_out_falling : 1
@@ -71,13 +73,26 @@ def simple_model(N, params, record=None, update_progress=None):
     accum_weighted_sum_sin_phase : 1
     '''
     G = NeuronGroup(N*len(dietz_fm), eqs, method='euler', dt=0.1*ms)
+    rr = G.run_regularly('''
+        accum_sum_out += out*do_accumulate
+        phase = (2*pi*fm*t)%(2*pi)
+        accum_sum_out_rising += out*int(phase<pi)*do_accumulate
+        accum_sum_out_falling += out*int(phase>=pi)*do_accumulate
+        accum_weighted_sum_cos_phase += out*cos(phase)*do_accumulate
+        accum_weighted_sum_sin_phase += out*sin(phase)*do_accumulate
+        is_larger = out>accum_max_out and do_accumulate>0
+        accum_max_out = int(not is_larger)*accum_max_out+int(is_larger)*out
+        accum_argmax_out = int(not is_larger)*accum_argmax_out+int(is_larger)*t
+        ''',
+        when='end')
     params = params.copy()
     for k, v in params.items():
         if isinstance(v, tuple) and len(v)==2:
             low, high = v
             params[k] = v = rand(N)*(high-low)+low
     params2d = params.copy()
-    fm = dietz_fm
+    if fm is None:
+        fm = dietz_fm
     for k, v in params2d.items():
         if isinstance(v, ndarray) and v.size>1:
             v = reshape(v, v.size)
@@ -89,35 +104,39 @@ def simple_model(N, params, record=None, update_progress=None):
     G.set_states(params2d)
     G.tauihc_ms['tauihc_ms<min_tauihc/ms'] = 0
     G.Q = 1
-    net = Network(G)
+    net = Network(G, rr)
+    # Calculate how long to run the simulation
+    period = 1/fm
+    num_initial_cycles = ceil(minimum_initial_time/period) # at least one period and at least that time
+    start_time = num_initial_cycles*period
+    end_time = (num_initial_cycles+1)*period
+    duration = amax(end_time)
+    G.start_time = start_time
+    G.end_time = end_time
+    # Run the simulation
     if isinstance(update_progress, basestring):
         report_period = 10*second
     else:
         report_period = 1*second
-    net.run(.25*second, report=update_progress, report_period=report_period)
-    rr = G.run_regularly('''
-        accum_sum_out += out
-        phase = (2*pi*fm*t)%(2*pi)
-        accum_sum_out_rising += out*int(phase<pi)
-        accum_sum_out_falling += out*int(phase>=pi)
-        accum_weighted_sum_cos_phase += out*cos(phase)
-        accum_weighted_sum_sin_phase += out*sin(phase)
-        is_larger = out>accum_max_out
-        accum_max_out = int(not is_larger)*accum_max_out+int(is_larger)*out
-        accum_argmax_out = int(not is_larger)*accum_argmax_out+int(is_larger)*t
-        ''',
-        when='end')
-    net.add(rr)
     if record:
         M = StateMonitor(G, record, record=True)
         net.add(M)
-    net.run(.25*second, report=update_progress, report_period=report_period)
-    G.accum_sum_out['accum_sum_out==0'] = 1
+    net.run(duration, report=update_progress, report_period=report_period)
+    G.accum_sum_out['accum_sum_out<1e-10'] = 1
+    for name in ['accum_sum_out_rising', 'accum_sum_out_falling',
+                 'accum_argmax_out', 'accum_max_out', 'accum_weighted_sum_cos_phase',
+                 'accum_weighted_sum_sin_phase']:
+        if name=='accum_argmax_out':
+            u = second
+        else:
+            u = 1
+        getattr(G, name)['accum_sum_out>1e10'] = 0*u
+    G.accum_sum_out['accum_sum_out>1e10'] = 1
     c = G.accum_weighted_sum_cos_phase[:]
     s = G.accum_weighted_sum_sin_phase[:]
     weighted_phase = (angle(c+1j*s)+2*pi)%(2*pi)
     vs = sqrt(c**2+s**2)/G.accum_sum_out[:]
-    mean_fr = G.accum_sum_out[:]/(.25*second/G.dt)
+    mean_fr = G.accum_sum_out[:]/((end_time-start_time)/G.dt)
     onsettiness = 0.5*(1+(G.accum_sum_out_rising[:]-G.accum_sum_out_falling[:])/G.accum_sum_out[:])
     res = Results(
         accum_argmax_out=G.accum_argmax_out[:],
@@ -127,6 +146,8 @@ def simple_model(N, params, record=None, update_progress=None):
         mean_fr=mean_fr,
         onsettiness=onsettiness,
         params=params,
+        start_time=start_time,
+        end_time=end_time,
         )
     if record:
         for name in record:

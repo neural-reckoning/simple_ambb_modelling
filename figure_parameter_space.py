@@ -104,7 +104,7 @@ def map2d(M, weighted, error_func_name, **kwds):
     imshow(mse_deg, origin='lower left', aspect='auto',
            interpolation='nearest', vmin=0, extent=extent)
     labelit(error_func_name)
-    cs = contour(mse_deg, origin='lower', aspect='auto',
+    cs = contour(mse_deg, origin='lower', #aspect='auto',
                  levels=[15, 30, 45], colors='w',
                  extent=extent)
     clabel(cs, colors='w', inline=True, fmt='%d')
@@ -350,8 +350,8 @@ def parameter_space(N, M, M_popmap,
         text(0, o, s, transform=gcf().transFigure, fontsize=16)
 
         
-# N = 1000; M=20; M_popmap=10; num_params=20; blur_width=0.2 # quick, low quality
-N = 10000; M=40; M_popmap=20; num_params=100; blur_width=0.05 # medium quality
+N = 1000; M=20; M_popmap=10; num_params=20; blur_width=0.2 # quick, low quality
+# N = 10000; M=40; M_popmap=20; num_params=100; blur_width=0.05 # medium quality
 
 parameter_space(N=N, M=M, M_popmap=M_popmap, num_params=num_params, blur_width=blur_width,
                 popmap_error_cutoff=30,

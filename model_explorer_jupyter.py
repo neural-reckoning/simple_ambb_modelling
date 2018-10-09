@@ -45,13 +45,30 @@ def brian2_progress_reporter():
     Returns a widget and callback function to be used with Brian 2
     '''
     progress_slider = ipw.FloatProgress(description="Simulation progress", min=0, max=1)
-    progress_slider.layout.width = '100%'
+    progress_slider.layout.width = '95%'
+    progress_slider.style = {'description_width': '30%'}
     def update_progress(elapsed, complete, t_start, duration):
         progress_slider.value = complete
         if complete==1:
             progress_slider.bar_style = 'success'
+            progress_slider.description = "Simulation complete"
+        elif complete==0:
+            progress_slider.bar_style = ''
+            progress_slider.description = "Simulation started"
         else:
-            progress_slider.bar_style = ''    
+            progress_slider.bar_style = ''
+            time_remaining = elapsed/complete-elapsed
+            seconds_remaining = int(time_remaining)
+            minutes_remaining = seconds_remaining//60
+            seconds_remaining -= 60*minutes_remaining
+            hours_remaining = minutes_remaining//60
+            minutes_remaining -= 60*hours_remaining
+            remaining = str(seconds_remaining)+'s'
+            if minutes_remaining or hours_remaining:
+                remaining = str(minutes_remaining)+'m '+remaining
+            if hours_remaining:
+                remaining = str(hours_remaining) + 'h ' + remaining
+            progress_slider.description = "Simulating (%s remaining)" % remaining
     return progress_slider, update_progress
 
     
