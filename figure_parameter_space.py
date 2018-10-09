@@ -371,9 +371,13 @@ parameter_space(N=N, M=M, M_popmap=M_popmap, num_params=num_params, blur_width=b
                     taui_ms=2.22, level=4.49, taua_ms=8.94, taue_ms=0.16, gamma=0.70,
                     ),
                 popmap_params=dict(
-                    alpha=(0, 0.99), beta=(0, 2),
-                    taui_ms=(3, 7), taua_ms=(0.5, 5), taue_ms=(0.1, 1),
-                    gamma=(1, 1), level=(0, 20),
-                    ),
+                    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
+                    level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
+                    gamma=(0.1, 1)),
+#                 popmap_params=dict(
+#                     alpha=(0, 0.99), beta=(0, 2),
+#                     taui_ms=(3, 7), taua_ms=(0.5, 5), taue_ms=(0.1, 1),
+#                     gamma=(1, 1), level=(0, 20),
+#                     ),
                )
 savefig('figure_parameter_space.pdf')
