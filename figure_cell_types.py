@@ -152,11 +152,10 @@ def pop_summary(mse, arr, max_error=30, vmin=None, vmax=None):
     arr_std_close = nanmax(arr_nans, axis=2) - nanmin(arr_nans, axis=2)
     arr_std_all = amax(arr, axis=2)-amin(arr, axis=2)
     saturation = 1-arr_std_close/arr_std_all
-    #return saturation
     # convert to rgb
     img = cm.viridis(arr_mean)[:, :, :3] # discard alpha
     # desaturate image
-    img = desaturate(img, saturation)
+    img = desaturate(img, saturation**2)
     # hide values where nothing is good
     img = dstack((img, sum(whereclose, axis=2)>0))
     return img
@@ -202,7 +201,7 @@ def plot_cell_types(M, num_params, params,
     subplot(gs_maps[0:2, 7])
     s, v = meshgrid(linspace(0, 1, 20), linspace(0, 1, 20))
     img = cm.viridis(v)[:, :, :3] # convert to rgb, discard alpha
-    img = desaturate(img, s) # desaturate image
+    img = desaturate(img, s**2) # desaturate image
     imshow(img, extent=(0, 1, 0, 1), origin='lower left', aspect='auto', interpolation='bilinear')
     xticks([0, 1], fontsize=8)
     xlabel('Tuning')
