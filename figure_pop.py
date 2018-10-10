@@ -100,7 +100,7 @@ def generate_random_mcalpine_et_al_2001_bds(cf,N,std_factor=1.0):
 
 def BIPD_plots(arr_fc):
     cmap=plt.cm.viridis
-    for i in xrange(4):
+    for i in xrange(len(arr_fc)):
         plt.gca().set_color_cycle([cmap(i) for i in np.linspace(0, 1, len(arr_fc))])
     dist_bipd=[]
     x_axis= np.arange(0, 360, 1)
@@ -108,13 +108,32 @@ def BIPD_plots(arr_fc):
         dist_bipd.append( generate_random_mcalpine_et_al_2001_bds([arr_fc[i]*Hz],360,std_factor=1.0))
     for i in xrange(len(arr_fc)):
         plot(x_axis,dist_bipd[i],label='fc= '+str(int(arr_fc[i]))+' Hz')
-    xlabel('BIPD (deg)',fontsize=18)
+    xlabel('BIPD $^\circ$',fontsize=18)
     ylabel('Probability',fontsize=18)
-    xticks(fontsize=18)
+    x=[0,90,180,270,360]
+    xticks(x,x,fontsize=18)
     yticks(fontsize=18)
-    legend(bbox_to_anchor=[1.0,1.1],fontsize=10)
+    #legend(bbox_to_anchor=[0.67,0.98],fontsize=10)
+    legend()
+arr_fc=[200,500,1000,1500]
+BIPD_plots(arr_fc)
 
- BIPD_plots(np.linspace(100,2500,20))
+def tuning_curve(arr_k):
+    cmap=plt.cm.viridis
+    for i in xrange(len(arr_k)):
+        plt.gca().set_color_cycle([cmap(i) for i in np.linspace(0, 1, len(arr_k))])
+    for i in xrange(len(arr_k)):
+        bipds=np.linspace(0,360,360)
+        xlabel('IPD $^\circ$',fontsize=18)
+     
+        yticks(fontsize=18)
+        plot(bipds,cos((pi-(bipds*pi/180.0))/2)**arr_k[i],label='k= '+str(arr_k[i]))
+        x=[0,90,180,270,360]
+        xticks(x,x,fontsize=18)
+        xlabel('IPD $^\circ$',fontsize=18)
+        yticks(fontsize=18)
+        legend()
+tuning_curve([2,4,6,8,10])
 
 def canonical_dens_plots(tau,spread,stre_inh,kernel_func,sig_con,mcAlp_bipd,dphi_phase,Nx,Ny,fm,fc,m,ipd,tc,k,sigma,poisson_noise,dyn=False):
     fm=fm*Hz
@@ -235,93 +254,144 @@ layer1_stat270,layer_weighted_2_stat270,layer_weighted_stat270,kernel_stat270,in
 print layer1.shape
 kernel_border=canonical_dens_plots(tau,spread,stre_inh,'Border weighted exp',0.5,mcAlp_bipd,dphi_phase,Nx,Ny,fm,fc,m,ipds[ntrain270],tc,k,sigma,poisson_noise,True)[3]
 kernel_central=canonical_dens_plots(tau,spread,stre_inh,'Centrally weighted exp',0.5,mcAlp_bipd,dphi_phase,Nx,Ny,fm,fc,m,ipds[ntrain270],tc,k,sigma,poisson_noise,True)[3]
-
+x=[0,90,180,270,360]
+y=x
 ##First column
 subplot(gs[0:3,0:3])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer1,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
 colorbar()
+
 subplot(gs[3:6,0:3])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer1_stat270,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
 colorbar()
+
 subplot(gs[6:9,0:3])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer1_stat90,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
 
 ##Second column
 subplot(gs[0:3,3:6])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer_weighted,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
+
 subplot(gs[3:6,3:6])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer_weighted_stat270,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
+
+
 subplot(gs[6:9,3:6])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer_weighted_stat90,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
 
 ##Third column
 subplot(gs[0:3,6:9])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(inh_layer,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
+
 subplot(gs[3:6,6:9])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(inh_layer_stat270,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(x,x,fontsize=18)
+yticks(y,y,fontsize=18)
+
+
+
+
 subplot(gs[6:9,6:9])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(inh_layer_stat90,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(fontsize=18)
+yticks(fontsize=18)
 
 subplot(gs[0:3,9:12])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer_weighted_2,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(fontsize=18)
+yticks(fontsize=18)
 
 subplot(gs[3:6,9:12])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer_weighted_2_stat270,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(fontsize=18)
+yticks(fontsize=18)
 
 subplot(gs[6:9,9:12])
 #title('Density plot, fm='+ str(fm)+' Hz before BIPD weighting')
 imshow(layer_weighted_2_stat90,origin='lower left', interpolation='nearest', aspect='auto',extent=[0,360,0,360])
 colorbar()
+xticks(fontsize=18)
+yticks(fontsize=18)
 
 
+subplot(gs[11:14,0:2])
+arr_fc=[200,500,1000,1500]
+BIPD_plots(arr_fc)
 
-subplot(gs[12:15,0:4])
-BIPD_plots(np.linspace(100,2500,20))
+subplot(gs[11:14,3:5])
+arr_k=[2,4,6,8]
+tuning_curve(arr_k)
 
-subplot(gs[12:15,6:8])
+subplot(gs[11:14,6:8])
 imshow(kernel[::-1,::-1],origin='lower left', interpolation='nearest', aspect='auto')
+xticks(fontsize=18)
+yticks(fontsize=18)
+colorbar()
 
-subplot(gs[12:15,8:10])
+subplot(gs[11:14,8:10])
 imshow(kernel_central[::-1,::-1],origin='lower left', interpolation='nearest', aspect='auto')
+xticks(fontsize=18)
+yticks(fontsize=18)
+colorbar()
 
-subplot(gs[12:15,10:12])
+subplot(gs[11:14,10:12])
 imshow(kernel_border[::-1,::-1],origin='lower left', interpolation='nearest', aspect='auto')
-text(-175,245,'Processing pipeline', fontsize=30)
-text(-350, 205, 'AMBB',fontsize=25)
-text(-360, 155, 'Static IPD: 270$^\circ$',fontsize=25)
-text(-360, 110, 'Static IPD: 90$^\circ$',fontsize=25)
-text(-285, 230, 'Original',fontsize=25)
-text(-212, 230, 'After BIPD weighting',fontsize=25)
-text(-125, 230, 'After kernel convolution',fontsize=25)
-text(-45, 230, 'Original minus kernel convolution',fontsize=25)
-text(-155, 80, 'Phase $^\circ$ ',fontsize=22)
-text(-315, 160,'BIPD $^\circ$', rotation=90,fontsize=22)
-text(-270,45,'BIPD distribution', fontsize=25)
-text(-271,60,'BIPD weighting', fontsize=30)
-text(-117,45,'Constant', fontsize=22)
-text(-66,45,'Centrally weighted', fontsize=22)
-text(-5,45,'Border weighted', fontsize=22)
-text(-60,60,'Kernel', fontsize=30)
+xticks(fontsize=18)
+yticks(fontsize=18)
+colorbar()
+
+text(-165,245,'Processing pipeline', fontsize=30)
+
+text(-340, 205, 'AMBB',fontsize=25)
+text(-355, 155, 'Static IPD: 270$^\circ$',fontsize=25)
+text(-355, 110, 'Static IPD: 90$^\circ$',fontsize=25)
+text(-277,230, 'Original',fontsize=25)
+text(-203, 230, 'After BIPD weighting',fontsize=25)
+text(-120, 230, 'After kernel convolution',fontsize=25)
+text(-40, 230, 'Original minus kernel convolution',fontsize=25)
+text(-105, 80, 'Phase $^\circ$ ',fontsize=22)
+text(-310, 160,'BIPD $^\circ$', rotation=90,fontsize=22)
+text(-297,53,'BIPD weighting', fontsize=30)
+text(-206,53,'Tuning curve', fontsize=30)
+text(-110,45,'Constant', fontsize=22)
+text(-65,45,'Centrally weighted', fontsize=22)
+text(-3,45,'Border weighted', fontsize=22)
+text(-60,53,'Kernel', fontsize=30)
+
 
 tight_layout()
 savefig('figure_pop.pdf',bbox_inches='tight')
