@@ -19,8 +19,6 @@
 #     version: 2.7.15
 # ---
 
-# # Cell types
-
 # +
 # %matplotlib notebook
 from brian2 import *
@@ -58,9 +56,66 @@ latex_parameter_names = dict(
     beta=r"$\beta$",
     gamma=r"$\gamma$",
     level=r"$L$ (dB)",
+    tauihc_ms=r"$\tau_\mathrm{IHC}$ (ms)",
     )
 
-# ...
+# +
+def plot_curves(N, params, error_func=maxnorm, weighted=False):
+    # run the model at 500 Hz
+    params['fc_Hz'] = 500
+    seed(342309432)
+    res500 = simple_model(N, params, update_progress='text')
+    res500 = simple_model_results(N, res500, error_func, weighted=weighted)
+    # run the model at 200 Hz
+    params['fc_Hz'] = 200
+    seed(342309432)
+    res200 = simple_model(N, params, update_progress='text')
+    res200 = simple_model_results(N, res200, error_func, weighted=weighted,
+                                  target_phase=ones(5)*pi)
+    # analyse
+    mse = maximum(res500.mse, res200.mse/4)
+    idx_best = argmin(mse)
+    s = []
+    for paramname in params.keys():
+        if paramname!='fc_Hz':
+            s.append('%s=%.2f' % (paramname, res500.raw.params[paramname][idx_best]))
+    print 'Best params: '+', '.join(s)
+    # plot it
+    transp = clip(0.3*100./N, 0.01, 1)
+    plot(dietz_fm/Hz, res500.peak_phase[idx_best, :]*180/pi, '-C0', lw=2, label='Best model 500 Hz')
+    plot(dietz_fm/Hz, res200.peak_phase[idx_best, :]*180/pi, '-C1', lw=2, label='Best model 200 Hz')
+    errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data 500 Hz')
+    handles, labels = gca().get_legend_handles_labels()
+    lab2hand = OrderedDict()
+    for h, l in zip(handles, labels):
+        lab2hand[l] = h
+    legend(lab2hand.values(), lab2hand.keys(), loc='upper left')
+    grid()
+    xticks([4, 8, 16, 32, 64])
+    ylim(0, 360)
+    xlabel('Modulation frequency (Hz)')
+    ylabel('Extracted phase (deg)')
+    if 0:
+        mseflatdeg = mse.flatten()*180/pi
+        for i, paramname in enumerate(params.keys()):
+            if paramname!='fc_Hz':
+                figure()
+                values = res200.raw.params[paramname]
+                values = values[mseflatdeg<45]
+                hist(values, bins=20, range=params[paramname], histtype='stepfilled',
+                     fc='lightgray')
+                xlim(params[paramname])
+                yticks([])
+                title(latex_parameter_names[paramname])
+    
+plot_curves(N=10000,
+            params=dict(
+                taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
+                level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
+                gamma=(0.1, 1),
+                tauihc_ms=(0.1, 5),
+                ),
+           )
 
 # +
 def where_close_to_best(mse, max_error):
@@ -117,12 +172,28 @@ def plot_cell_types(M, num_params, params,
     axis_ranges['temp'] = zeros(num_params)
     array_kwds = meshed_arguments(selected_axes+('temp',), params, axis_ranges)
     del array_kwds['temp']
-    # Run the model
-    res = simple_model(M*M*num_params, array_kwds, update_progress='text')
-    res = simple_model_results(M*M*num_params, res, error_func, weighted,
-                               interpolate_bmf=True, shape=(M, M, num_params))
-    # Analyse the data
-    mse = res.mse
+    # run the model at 500 Hz
+    array_kwds['fc_Hz'] = 500
+    seed(342309432)
+    res500 = simple_model(M*M*num_params, array_kwds, update_progress='text')
+    res500 = simple_model_results(M*M*num_params, res500, error_func, weighted=weighted,
+                                  interpolate_bmf=True, shape=(M, M, num_params))
+    # run the model at 200 Hz
+    array_kwds['fc_Hz'] = 200
+    seed(342309432)
+    res200 = simple_model(M*M*num_params, array_kwds, update_progress='text')
+    res200 = simple_model_results(M*M*num_params, res200, error_func, weighted=weighted,
+                                  target_phase=ones(5)*pi,
+                                  interpolate_bmf=True, shape=(M, M, num_params))
+    # analyse
+    mse = maximum(res500.mse, res200.mse/3.)
+    res = res200
+#     # Run the model
+#     res = simple_model(M*M*num_params, array_kwds, update_progress='text')
+#     res = simple_model_results(M*M*num_params, res, error_func, weighted,
+#                                interpolate_bmf=True, shape=(M, M, num_params))
+#     # Analyse the data
+#     mse = res.mse
     mse = mse*180/pi
     mse_summary = pop_summary(mse, mse, vmin=0)
     # Define regions
@@ -265,9 +336,9 @@ def plot_cell_types(M, num_params, params,
 
     
 plot_cell_types(
-    #M=10, num_params=20,
+    M=10, num_params=20,
     #M=20, num_params=100,
-    M=40, num_params=100,
+    #M=40, num_params=100,
     weighted=False, error_func_name='Max error',
     params=dict(
         taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
@@ -275,5 +346,4 @@ plot_cell_types(
         gamma=(0.1, 1)),
     )
 
-savefig('figure_cell_types.pdf')
 show()

@@ -22,6 +22,7 @@
 # # Simple models of Dietz AMBB stimuli
 
 # +
+# %matplotlib notebook
 from brian2 import *
 from model_explorer_jupyter import *
 import ipywidgets as ipw

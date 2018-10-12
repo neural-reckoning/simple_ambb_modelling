@@ -31,6 +31,7 @@ class Results(object): # simple heap class, we'll add attributes to it
 @mem.cache(ignore=['update_progress'])
 def simple_model(N, params, record=None, update_progress=None,
                  fm=None, minimum_initial_time=100*ms):
+    seed(3402348923) # for reproducibility
     if fm is None:
         fm = dietz_fm
     orig_fm = fm
@@ -159,7 +160,8 @@ def simple_model(N, params, record=None, update_progress=None,
     return res
 
 @mem.cache
-def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=False, shape=None, fm=None):
+def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=False,
+                         shape=None, fm=None, target_phase=None):
     if fm is None:
         fm = dietz_fm
         dietz_fm_idx = arange(len(dietz_fm))
@@ -168,6 +170,8 @@ def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=Fal
     n_fm = len(fm)
     if shape is None:
         shape = (N,)
+    if target_phase is None:
+        target_phase = dietz_phase
     out_peak = out.accum_argmax_out
     peak_fr = out.accum_max_out
     weighted_phase = out.weighted_phase
@@ -185,7 +189,7 @@ def simple_model_results(N, out, error_func, weighted=False, interpolate_bmf=Fal
     max_mean_fr[max_mean_fr==0] = 1
     norm_peak_fr = peak_fr/max_peak_fr
     norm_mean_fr = mean_fr/max_mean_fr
-    mse = error_func(dietz_phase[newaxis, :], peak_phase[:, dietz_fm_idx]) # sum over fm, mse has shape N
+    mse = error_func(target_phase[newaxis, :], peak_phase[:, dietz_fm_idx]) # sum over fm, mse has shape N
     mse_norm = (mse-amin(mse))/(amax(mse)-amin(mse))
     peak_bmf = asarray(fm)[argmax(norm_peak_fr, axis=1)]
     mean_bmf = asarray(fm)[argmax(norm_mean_fr, axis=1)]

@@ -27,9 +27,10 @@
 # * **Sensitivity analysis** somehow
 # * sampling/smoothing on population/map plot
 
+# + {"cell_type": "markdown", "heading_collapsed": true}
 # ## Common code / data
 
-# + {"init_cell": true}
+# + {"init_cell": true, "hidden": true}
 # %matplotlib notebook
 from brian2 import *
 from model_explorer_jupyter import *
@@ -380,7 +381,7 @@ population_summary_methods = {
 def plot_population_map(selected_axes, **kwds):
     global curfig
     # always use the same random seed for cacheing
-    seed(34032483)    
+    seed(34032483)
     # Set up ranges of variables, and generate arguments to pass to model function
     pop_summary_name = kwds.pop('pop_summary')
     pop_summary = population_summary_methods[pop_summary_name]
@@ -394,14 +395,43 @@ def plot_population_map(selected_axes, **kwds):
     M, num_params, blur_width = detail_settings[kwds.pop('detail')]
     weighted = kwds.pop('weighted')
     smoothing = kwds.pop('smoothing')
+    paired_frequency_analysis = kwds.pop('paired_frequency_analysis')
+    lf_weight = kwds.pop('lf_weight')
+    if paired_frequency_analysis=='No':
+        paired_frequency_analysis = False
+    else:
+        if 'LF' in paired_frequency_analysis:
+            show_LF = True
+        else:
+            show_LF = False
+        paired_frequency_analysis = True
+        paired_lf, paired_hf = kwds.pop('fc_Hz')
     axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
     axis_ranges['temp'] = zeros(num_params)
     array_kwds = meshed_arguments(selected_axes+('temp',), kwds, axis_ranges)
     del array_kwds['temp']
     # Run the model
-    res = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
-    res = simple_model_results(M*M*num_params, res, error_func, weighted, shape=(M, M, num_params))
-    mse = res.mse
+    if paired_frequency_analysis:
+        array_kwds['fc_Hz'] = paired_lf
+        seed(34032483)
+        res_lf = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
+        res_lf = simple_model_results(M*M*num_params, res_lf, error_func, weighted,
+                                      interpolate_bmf=interpolate_bmf, shape=(M, M, num_params))
+        array_kwds['fc_Hz'] = paired_hf
+        seed(34032483)
+        res_hf = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
+        res_hf = simple_model_results(M*M*num_params, res_hf, error_func, weighted,
+                                      interpolate_bmf=interpolate_bmf, shape=(M, M, num_params))
+        if show_LF:
+            res = res_lf
+        else:
+            res = res_hf
+        mse = maximum(lf_weight*res_lf.mse, res_hf.mse)
+    else:
+        res = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
+        res = simple_model_results(M*M*num_params, res, error_func, weighted,
+                                   interpolate_bmf=interpolate_bmf, shape=(M, M, num_params))
+        mse = res.mse
     vx, vy = selected_axes
     # Analyse the data
     vs = res.raw_measures['vs']    
@@ -583,7 +613,13 @@ def population_map():
         ipw.FloatSlider(description="Error cutoff (deg)",
                         min=0, max=180, value=30, step=5))
     params['interpolate_bmf'] = full_width_widget(ipw.Checkbox(description="Interpolate BMF",
-                                                               value=False))    
+                                                               value=False))
+    params['paired_frequency_analysis'] = full_width_widget(
+        ipw.Dropdown(description="Paired frequency analysis",
+                     options=["No", "Yes, show LF", "Yes, show HF"],
+                     values="No"))
+    params['lf_weight'] = full_width_widget(
+        ipw.FloatSlider(description="PairedFreq: LF weight", min=0, max=1, step=0.05, value=1))
     def plotter(**kwds):
         vx = vs2d_pop_map.selection['Horizontal axis']
         vy = vs2d_pop_map.selection['Vertical axis']
@@ -608,7 +644,7 @@ models = [('2d map', map2d(simple_model, vs2d_mse_mtf), options2d_mse_mtf,
 # Create model explorer, and jump immediately to results page
 modex = model_explorer(models)
 # modex.widget_model_type.value = '2d map'
-modex.widget_model_type.value = 'Population'
-#modex.widget_model_type.value = 'Population/map'
+# modex.widget_model_type.value = 'Population'
+modex.widget_model_type.value = 'Population/map'
 modex.tabs.selected_index = 1
 display(modex)
