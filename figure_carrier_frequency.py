@@ -19,6 +19,8 @@
 #     version: 2.7.15
 # ---
 
+# # VERY MUCH NOT FINISHED
+
 # +
 # %matplotlib notebook
 from brian2 import *
@@ -162,7 +164,7 @@ def pop_summary(mse, arr, max_error=30, vmin=None, vmax=None):
     return img
 
 def plot_cell_types(M, num_params, params,
-                    weighted, error_func_name):
+                    weighted, error_func_name, max_error=45):
     # always use the same random seed for cacheing
     seed(34032483)    
     # Set up ranges of variables, and generate arguments to pass to model function
@@ -186,27 +188,21 @@ def plot_cell_types(M, num_params, params,
                                   target_phase=ones(5)*pi,
                                   interpolate_bmf=True, shape=(M, M, num_params))
     # analyse
-    mse = maximum(res500.mse, res200.mse/3.)
     res = res200
-#     # Run the model
-#     res = simple_model(M*M*num_params, array_kwds, update_progress='text')
-#     res = simple_model_results(M*M*num_params, res, error_func, weighted,
-#                                interpolate_bmf=True, shape=(M, M, num_params))
-#     # Analyse the data
-#     mse = res.mse
+    mse = maximum(res500.mse, res200.mse/3.)
     mse = mse*180/pi
-    mse_summary = pop_summary(mse, mse, vmin=0)
+    mse_summary = pop_summary(mse, mse, vmin=0, max_error=max_error)
     # Define regions
     meanvs = mean(res.raw_measures['vs'], axis=3)
-    regions = [('All', mse < 30, 'lightgray', 1),
-               ('Low VS', logical_and(mse < 30, meanvs < 0.5), 'red', 0.25),
-               ('High VS', logical_and(mse < 30, meanvs >= 0.5), 'blue', 0.25)]
+    regions = [('All', mse < max_error, 'lightgray', 1),
+               ('Low VS', logical_and(mse < max_error, meanvs < 0.75), 'red', 0.25),
+               ('High VS', logical_and(mse < max_error, meanvs >= 0.75), 'blue', 0.25)]
     
     # Plot the data
-    fig = figure(figsize=(10, 9))
-    gs_maps = GridSpec(2, 8, left=.0, bottom=.65, top=1, width_ratios=[1]*7+[0.5])
-    gs_hist = GridSpec(2, 4, left=.05, bottom=0.25, top=0.65)
-    gs_ex = GridSpec(1, 4, left=.05, bottom=0.0, top=0.25)
+    fig = figure(figsize=(10, 10))
+    gs_maps = GridSpec(2, 8, left=.0, bottom=.7, top=1, width_ratios=[1]*7+[0.5])
+    gs_hist = GridSpec(3, 4, left=.05, bottom=0.25, top=0.7)
+    gs_ex = GridSpec(1, 4, left=.05, bottom=0.0, top=0.24)
     ordered_gridspecs = [gs_maps, gs_hist, gs_ex]
 
     def hatchback():
@@ -240,15 +236,17 @@ def plot_cell_types(M, num_params, params,
     ylabel(r'Inhibition strength $\beta$')
 
     # Property maps
-    for i, (name, values, vmin, vmax) in enumerate([('tMTF', meanvs, 0, 1),
-                                                    ('tMD', res.moddepth['mean'], 0, 1),
-                                                    ('tBMF', res.bmf['vs'], 4, 64),
-                                                    ('rMD', res.moddepth['mean'], 0, 1),
-                                                    ('rBMF', res.bmf['mean'], 4, 64),
-                                                    ]):
+    cell_properties = dict([
+        ('tMTF', (meanvs, 0, 1)),
+        ('tMD', (res.moddepth['mean'], 0, 1)),
+        ('tBMF', (res.bmf['vs'], 4, 64)),
+        ('rMD', (res.moddepth['mean'], 0, 1)),
+        ('rBMF', (res.bmf['mean'], 4, 64)),
+        ])
+    for i, (name, (values, vmin, vmax)) in enumerate(cell_properties.items()):
         subplot(gs_maps[0, 2+i])
         title(name)
-        imshow(pop_summary(mse, values, vmin=vmin, vmax=vmax),
+        imshow(pop_summary(mse, values, vmin=vmin, vmax=vmax, max_error=max_error),
                origin='lower left', aspect='auto',
                interpolation='nearest', extent=extent)
         xticks([])
@@ -261,7 +259,7 @@ def plot_cell_types(M, num_params, params,
         title(latex_parameter_names[paramname])
         v = reshape(res.raw.params[paramname], (M, M, num_params))
         low, high = params[paramname]
-        imshow(pop_summary(mse, v, vmin=low, vmax=high),
+        imshow(pop_summary(mse, v, vmin=low, vmax=high, max_error=max_error),
                origin='lower left', aspect='auto',
                interpolation='nearest', extent=extent)
         xticks([])
@@ -292,6 +290,7 @@ def plot_cell_types(M, num_params, params,
         ax.set_xticks([4, 8, 16, 32, 64])
         ax.set_ylim(0, 1)
     for region_name, cond, col, alpha in regions[1:]:
+        print "Region %s contains %.1f%% of good parameters" % (region_name, sum(cond)*100.0/sum(mse<max_error))        
         # Construct parameter values for that region
         region_example_params[region_name] = region_params = {}
         for paramname in params.keys():
@@ -311,33 +310,37 @@ def plot_cell_types(M, num_params, params,
         ax_tmtf.plot(dietz_fm, cur_res.raw_measures['vs'].T, c=col)
 
     # Parameter histograms
-    for i, paramname in enumerate(params.keys()):
+    for i, paramname in enumerate(['alpha', 'beta', 'gamma', 'level', 'taue_ms', 'taui_ms', 'taua_ms',
+                                   'tMTF', 'tMD', 'tBMF', 'rMD', 'rBMF']):
         subplot(gs_hist[i//4, i%4])
-        values = reshape(res.raw.params[paramname], (M, M, num_params))
+        if paramname in res.raw.params:
+            values = reshape(res.raw.params[paramname], (M, M, num_params))
+            low, high = params[paramname]
+        else:
+            values, low, high = cell_properties[paramname]
         for condname, cond, col, alpha in regions:
             v = values[cond]
-            hist(v, bins=M, range=params[paramname], histtype='stepfilled',
+            hist(v, bins=M, range=(low, high), histtype='stepfilled',
                  fc=col, alpha=alpha, label=condname)
-            if condname in region_example_params:
+            if paramname in res.raw.params and condname in region_example_params:
                 axvline(region_example_params[condname][paramname], c=col)
-        xlim(params[paramname])
+        xlim(low, high)
         yticks([])
-        title(latex_parameter_names[paramname])
+        title(latex_parameter_names.get(paramname, paramname))
 
     # Tight layout
     for gs in ordered_gridspecs:
         gs.tight_layout(fig, rect=(gs.left, gs.bottom, gs.right, gs.top))
 
     # annotate
-    for c, loc in zip('ABC', [.98, .63, .23]):
-        print c, loc
+    for c, loc in zip('ABC', [.98, .68, .23]):
         text(0.02, loc, c, fontsize=14, transform=fig.transFigure,
              horizontalalignment='left', verticalalignment='top')
 
     
 plot_cell_types(
-    M=10, num_params=20,
-    #M=20, num_params=100,
+    #M=10, num_params=20,
+    M=20, num_params=100,
     #M=40, num_params=100,
     weighted=False, error_func_name='Max error',
     params=dict(
@@ -345,5 +348,6 @@ plot_cell_types(
         level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
         gamma=(0.1, 1)),
     )
+savefig('figure_carrier_frequency.pdf')
 
 show()
