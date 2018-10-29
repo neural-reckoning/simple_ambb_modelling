@@ -29,7 +29,8 @@ from matplotlib import cm
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 import matplotlib.patches as patches
 from scipy.ndimage.interpolation import zoom
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage.filters import gaussian_filter, median_filter
+
 from simple_model import *
 from model_explorer_jupyter import meshed_arguments
 
@@ -167,8 +168,15 @@ def plot_cell_types(M, num_params, params,
     # Error map
     extent = (params[vx]+params[vy])
     subplot(gs_maps[0:2, 0:2]) # error
+    blur_width = 0.02
+    mse_summary = median_filter(mse_summary, mode='nearest', size=5)
+    mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
            interpolation='nearest', extent=extent)
+    cs = contour(mse_summary_blur, origin='lower',
+                 levels=[15, 30, 45], colors='w',
+                 extent=extent)
+    clabel(cs, colors='w', inline=True, fmt='%d')
     title('Max error (deg)')
     xlabel(r'Adaptation strength $\alpha$')
     ylabel(r'Inhibition strength $\beta$')
@@ -197,7 +205,10 @@ def plot_cell_types(M, num_params, params,
         title(latex_parameter_names[paramname])
         v = reshape(res.raw.params[paramname], (M, M, num_params))
         low, high = params[paramname]
-        imshow(pop_summary(mse, v, vmin=low, vmax=high),
+        img = pop_summary(mse, v, vmin=low, vmax=high)
+        #img = median_filter(img, mode='nearest', size=5)
+        #img = gaussian_filter(img, 1, mode='nearest')    
+        imshow(img,
                origin='lower left', aspect='auto',
                interpolation='nearest', extent=extent)
         xticks([])
@@ -232,7 +243,6 @@ def plot_cell_types(M, num_params, params,
         print "Region %s contains %.1f%% of good parameters" % (region_name, sum(cond)*100.0/sum(mse<30))
         # Construct parameter values for that region
         example_indices = arange(sum(cond))
-        from numpy.random import shuffle
         shuffle(example_indices)
         for cur_ex, ex_idx in enumerate(example_indices[:num_examples_to_show+1]):
             if cur_ex<num_examples_to_show:
