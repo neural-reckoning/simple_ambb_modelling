@@ -172,7 +172,7 @@ def plot_cell_types(M, num_params, params,
     mse_summary = median_filter(mse_summary, mode='nearest', size=5)
     mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
-           interpolation='nearest', extent=extent)
+           interpolation='nearest', extent=extent, vmin=0, vmax=135)
     cs = contour(mse_summary_blur, origin='lower',
                  levels=[15, 30, 45], colors='w',
                  extent=extent)

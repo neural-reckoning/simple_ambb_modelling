@@ -26,10 +26,10 @@
 from brian2 import *
 from collections import OrderedDict
 from matplotlib import cm
-from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
+from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_rgba
 import matplotlib.patches as patches
 from scipy.ndimage.interpolation import zoom
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage.filters import gaussian_filter, median_filter, minimum_filter
 from simple_model import *
 from model_explorer_jupyter import meshed_arguments
 
@@ -112,10 +112,10 @@ def plot_curves(N, params, error_func=maxnorm, weighted=False):
     
 plot_curves(N=10000,
             params=dict(
-                taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
+                taui_ms=(0.1, 10), taue_ms=(0.1, 2.5), taua_ms=(0.1, 10),
                 level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
                 gamma=(0.1, 1),
-                tauihc_ms=(0.1, 5),
+                tauihc_ms=(0.1, 2.5),
                 ),
            )
 
@@ -164,7 +164,8 @@ def pop_summary(mse, arr, max_error=30, vmin=None, vmax=None):
     return img
 
 def plot_cell_types(M, num_params, params,
-                    weighted, error_func_name, max_error=45):
+                    weighted, error_func_name,
+                    max_error=45, discount_200=3.):
     # always use the same random seed for cacheing
     seed(34032483)    
     # Set up ranges of variables, and generate arguments to pass to model function
@@ -189,20 +190,21 @@ def plot_cell_types(M, num_params, params,
                                   interpolate_bmf=True, shape=(M, M, num_params))
     # analyse
     res = res200
-    mse = maximum(res500.mse, res200.mse/3.)
+    mse = maximum(res500.mse, res200.mse/discount_200)
     mse = mse*180/pi
-    mse_summary = pop_summary(mse, mse, vmin=0, max_error=max_error)
+    mse_summary = pop_summary(mse, mse)#, vmin=0, max_error=max_error)
     # Define regions
     meanvs = mean(res.raw_measures['vs'], axis=3)
     regions = [('All', mse < max_error, 'lightgray', 1),
-               ('Low VS', logical_and(mse < max_error, meanvs < 0.75), 'red', 0.25),
-               ('High VS', logical_and(mse < max_error, meanvs >= 0.75), 'blue', 0.25)]
+               #('Low VS', logical_and(mse < max_error, meanvs < 0.75), 'red', 0.25),
+               #('High VS', logical_and(mse < max_error, meanvs >= 0.75), 'blue', 0.25),
+              ]
     
     # Plot the data
     fig = figure(figsize=(10, 10))
     gs_maps = GridSpec(2, 8, left=.0, bottom=.7, top=1, width_ratios=[1]*7+[0.5])
     gs_hist = GridSpec(3, 4, left=.05, bottom=0.25, top=0.7)
-    gs_ex = GridSpec(1, 4, left=.05, bottom=0.0, top=0.24)
+    gs_ex = GridSpec(1, 5, left=.05, bottom=0.0, top=0.24)
     ordered_gridspecs = [gs_maps, gs_hist, gs_ex]
 
     def hatchback():
@@ -229,8 +231,15 @@ def plot_cell_types(M, num_params, params,
     # Error map
     extent = (params[vx]+params[vy])
     subplot(gs_maps[0:2, 0:2]) # error
+    #mse_summary = median_filter(mse_summary, mode='nearest', size=5)
+    mse_summary = minimum_filter(mse_summary, mode='nearest', size=3)
+    mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
-           interpolation='nearest', extent=extent)
+           interpolation='nearest', extent=extent, vmin=0, vmax=135)
+    cs = contour(mse_summary_blur, origin='lower',
+                 levels=[15, 30, 45], colors='w',
+                 extent=extent)
+    clabel(cs, colors='w', inline=True, fmt='%d')
     title('Max error (deg)')
     xlabel(r'Adaptation strength $\alpha$')
     ylabel(r'Inhibition strength $\beta$')
@@ -269,8 +278,9 @@ def plot_cell_types(M, num_params, params,
     # Region examples
     ax_lf = subplot(gs_ex[0, 0])
     ax_hf = subplot(gs_ex[0, 1])
-    ax_rmtf = subplot(gs_ex[0, 2])
-    ax_tmtf = subplot(gs_ex[0, 3])
+    ax_phase = subplot(gs_ex[0, 2])
+    ax_rmtf = subplot(gs_ex[0, 3])
+    ax_tmtf = subplot(gs_ex[0, 4])
     ax_lf.set_title(r'$f_m=4$ Hz')
     ax_hf.set_title(r'$f_m=64$ Hz')
     ax_rmtf.set_title('rMTF')
@@ -289,29 +299,43 @@ def plot_cell_types(M, num_params, params,
         ax.set_xlabel(r'$f_m$')
         ax.set_xticks([4, 8, 16, 32, 64])
         ax.set_ylim(0, 1)
-    for region_name, cond, col, alpha in regions[1:]:
+    ax_phase.errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--or', label='Data')
+    ax_phase.set_ylim(0, 180)
+    for region_name, cond, col, alpha in regions[:1]:
         print "Region %s contains %.1f%% of good parameters" % (region_name, sum(cond)*100.0/sum(mse<max_error))        
         # Construct parameter values for that region
         region_example_params[region_name] = region_params = {}
+        #for paramname in params.keys():
+        #    values = reshape(res.raw.params[paramname], (M, M, num_params))
+        #    values = values[cond]
+        #    region_params[paramname] = median(values)
+        idx_best = unravel_index(argmin(mse), mse.shape) # a triple
         for paramname in params.keys():
-            values = reshape(res.raw.params[paramname], (M, M, num_params))
-            values = values[cond]
-            region_params[paramname] = median(values)
-        cur_res = simple_model(1, region_params, record=['out'])
-        cur_res = simple_model_results(1, cur_res, error_func, weighted, interpolate_bmf=True)
-        print region_name, cur_res.mse*180/pi, region_params
-        out = cur_res.raw.out
-        t = cur_res.raw.t
-        for j, ax in [(0, ax_lf), (-1, ax_hf)]:
-            I = logical_and(t>=cur_res.raw.start_time[j], t<cur_res.raw.end_time[j])
-            phase = ((2*pi*dietz_fm[j]*t[I])%(2*pi))*180/pi
-            ax.plot(phase, normed(out[0, j, I]), c=col)
-        ax_rmtf.plot(dietz_fm, cur_res.norm_measures['mean'].T, c=col)
-        ax_tmtf.plot(dietz_fm, cur_res.raw_measures['vs'].T, c=col)
+            region_params[paramname] = reshape(res.raw.params[paramname], (M, M, num_params))[idx_best]
+        for fc_Hz, brightness, target_phase in [(200, 0, ones(5)*pi), (500, 0.5, None)]:
+            #c = array(to_rgba(col))*(1-brightness)+brightness*ones(4)
+            #c[3] = 0.5
+            #c = tuple(c)
+            c = to_rgba(col)
+            c = (c[0], brightness, c[2], 0.5)
+            region_params['fc_Hz'] = fc_Hz
+            cur_res = simple_model(1, region_params, record=['out'])
+            cur_res = simple_model_results(1, cur_res, error_func, weighted, interpolate_bmf=True,
+                                           target_phase=target_phase)
+            print region_name, cur_res.mse*180/pi, region_params
+            out = cur_res.raw.out
+            t = cur_res.raw.t
+            for j, ax in [(0, ax_lf), (-1, ax_hf)]:
+                I = logical_and(t>=cur_res.raw.start_time[j], t<cur_res.raw.end_time[j])
+                phase = ((2*pi*dietz_fm[j]*t[I])%(2*pi))*180/pi
+                ax.plot(phase, normed(out[0, j, I]), c=c)
+            ax_phase.plot(dietz_fm, cur_res.peak_phase[0]*180/pi, c=c)
+            ax_rmtf.plot(dietz_fm, cur_res.norm_measures['mean'].T, c=c)
+            ax_tmtf.plot(dietz_fm, cur_res.raw_measures['vs'].T, c=c)
 
     # Parameter histograms
-    for i, paramname in enumerate(['alpha', 'beta', 'gamma', 'level', 'taue_ms', 'taui_ms', 'taua_ms',
-                                   'tMTF', 'tMD', 'tBMF', 'rMD', 'rBMF']):
+    for i, paramname in enumerate(['alpha', 'beta', 'gamma', 'level', 'taue_ms', 'taui_ms', 'taua_ms', 'tauihc_ms',
+                                   'tMTF', 'tMD', 'tBMF', 'rMD']):#, 'rBMF']):
         subplot(gs_hist[i//4, i%4])
         if paramname in res.raw.params:
             values = reshape(res.raw.params[paramname], (M, M, num_params))
@@ -344,9 +368,11 @@ plot_cell_types(
     #M=40, num_params=100,
     weighted=False, error_func_name='Max error',
     params=dict(
-        taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
+        taui_ms=(0.1, 10), taue_ms=(0.1, 2.5), taua_ms=(0.1, 10),
         level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
-        gamma=(0.1, 1)),
+        gamma=(0.1, 1),
+        tauihc_ms=(0.1, 2.5),
+        ),
     )
 savefig('figure_carrier_frequency.pdf')
 
