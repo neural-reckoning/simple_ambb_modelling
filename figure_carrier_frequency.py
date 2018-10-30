@@ -199,9 +199,7 @@ def plot_cell_types(M, num_params, params,
     mse_summary = pop_summary(mse, mse)#, vmin=0, max_error=max_error)
     # Define regions
     meanvs = mean(res.raw_measures['vs'], axis=3)
-    regions = [('All', mse < max_error, 'lightgray', 1),
-               #('Low VS', logical_and(mse < max_error, meanvs < 0.75), 'red', 0.25),
-               #('High VS', logical_and(mse < max_error, meanvs >= 0.75), 'blue', 0.25),
+    regions = [('All', mse < max_error, 'k', 0.5),
               ]
     
     # Plot the data
@@ -235,8 +233,8 @@ def plot_cell_types(M, num_params, params,
     # Error map
     extent = (params[vx]+params[vy])
     subplot(gs_maps[0:2, 0:2]) # error
-    #mse_summary = median_filter(mse_summary, mode='nearest', size=5)
-    mse_summary = minimum_filter(mse_summary, mode='nearest', size=3)
+    mse_summary = median_filter(mse_summary, mode='nearest', size=5)
+    #mse_summary = minimum_filter(mse_summary, mode='nearest', size=3)
     mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
            interpolation='nearest', extent=extent, vmin=0, vmax=135)
@@ -294,17 +292,20 @@ def plot_cell_types(M, num_params, params,
     region_example_params = {}
     for ax in [ax_lf, ax_hf]:
         ax.fill_between(phase*180/pi, 0, env, color=(0.9,) * 3, zorder=-2)
-        ax.set_xlabel('Phase (deg')
+        ax.set_xlabel('Phase (deg)')
         ax.set_xticks([0, 90, 180, 270, 360])
         ax.set_xlim(0, 360)
         ax.set_yticks([])
         ax.set_ylim(0, 1)
-    for ax in [ax_rmtf, ax_tmtf]:
+    for ax in [ax_rmtf, ax_tmtf, ax_phase]:
         ax.set_xlabel(r'$f_m$')
         ax.set_xticks([4, 8, 16, 32, 64])
         ax.set_ylim(0, 1)
     ax_phase.errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--or', label='Data')
-    ax_phase.set_ylim(0, 180)
+    ax_phase.set_ylim(0, 190)
+    ax_phase.set_yticks([0, 45, 90, 135, 180])
+    ax_phase.axhline(180, ls='--', c='k')
+    ax_phase.set_title('Phase (deg)')
     for region_name, cond, col, alpha in regions[:1]:
         print "Region %s contains %.1f%% of good parameters" % (region_name, sum(cond)*100.0/sum(mse<max_error))        
         # Construct parameter values for that region
@@ -370,6 +371,7 @@ plot_cell_types(
     #M=20, num_params=100,
     M=40, num_params=200,
     weighted=False, error_func_name='Max error',
+    max_error=30,
     params=dict(
         taui_ms=(0.1, 10), taue_ms=(0.1, 2.5), taua_ms=(0.1, 10),
         level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
