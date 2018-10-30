@@ -32,6 +32,7 @@ from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter, median_filter, minimum_filter
 from simple_model import *
 from model_explorer_jupyter import meshed_arguments
+import time
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
@@ -66,14 +67,17 @@ def plot_curves(N, params, error_func=maxnorm, weighted=False):
     # run the model at 500 Hz
     params['fc_Hz'] = 500
     seed(342309432)
-    res500 = simple_model(N, params, update_progress='text')
+    start_time = time.time()
+    res500 = simple_model(N, params, update_progress='text', use_standalone_openmp=True)
     res500 = simple_model_results(N, res500, error_func, weighted=weighted)
     # run the model at 200 Hz
     params['fc_Hz'] = 200
     seed(342309432)
-    res200 = simple_model(N, params, update_progress='text')
+    res200 = simple_model(N, params, update_progress='text', use_standalone_openmp=True)
     res200 = simple_model_results(N, res200, error_func, weighted=weighted,
                                   target_phase=ones(5)*pi)
+    end_time = time.time()
+    print 'Time taken: %ds' % (end_time-start_time)
     # analyse
     mse = maximum(res500.mse, res200.mse/4)
     idx_best = argmin(mse)
@@ -178,13 +182,13 @@ def plot_cell_types(M, num_params, params,
     # run the model at 500 Hz
     array_kwds['fc_Hz'] = 500
     seed(342309432)
-    res500 = simple_model(M*M*num_params, array_kwds, update_progress='text')
+    res500 = simple_model(M*M*num_params, array_kwds, update_progress='text', use_standalone_openmp=True)
     res500 = simple_model_results(M*M*num_params, res500, error_func, weighted=weighted,
                                   interpolate_bmf=True, shape=(M, M, num_params))
     # run the model at 200 Hz
     array_kwds['fc_Hz'] = 200
     seed(342309432)
-    res200 = simple_model(M*M*num_params, array_kwds, update_progress='text')
+    res200 = simple_model(M*M*num_params, array_kwds, update_progress='text', use_standalone_openmp=True)
     res200 = simple_model_results(M*M*num_params, res200, error_func, weighted=weighted,
                                   target_phase=ones(5)*pi,
                                   interpolate_bmf=True, shape=(M, M, num_params))
@@ -361,11 +365,10 @@ def plot_cell_types(M, num_params, params,
         text(0.02, loc, c, fontsize=14, transform=fig.transFigure,
              horizontalalignment='left', verticalalignment='top')
 
-    
 plot_cell_types(
     #M=10, num_params=20,
-    M=20, num_params=100,
-    #M=40, num_params=100,
+    #M=20, num_params=100,
+    M=40, num_params=200,
     weighted=False, error_func_name='Max error',
     params=dict(
         taui_ms=(0.1, 10), taue_ms=(0.1, 2.5), taua_ms=(0.1, 10),

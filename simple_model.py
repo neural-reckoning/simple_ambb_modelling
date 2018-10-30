@@ -2,8 +2,10 @@
 The core single neuron model.
 '''
 from brian2 import *
+from brian2.devices.device import reset_device, reinit_devices
 from scipy.interpolate import interp1d
 import joblib
+import multiprocessing
 
 __all__ = ['dietz_fm', 'dietz_phase', 'dietz_phase_std', 'simple_model', 'simple_model_results']
 
@@ -14,6 +16,7 @@ dietz_phase_std = array([46, 29, 29, 31, 37])*pi/180
 # Known warnings that we expect, so suppress them
 BrianLogger.suppress_name('resolution_conflict')
 BrianLogger.suppress_name('invalid_values')
+BrianLogger.suppress_name('openmp')
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
@@ -28,9 +31,13 @@ class Results(object): # simple heap class, we'll add attributes to it
             setattr(self, k, v)
 
 
-@mem.cache(ignore=['update_progress'])
+@mem.cache(ignore=['update_progress', 'use_standalone_openmp'])
 def simple_model(N, params, record=None, update_progress=None,
-                 fm=None, minimum_initial_time=100*ms):
+                 fm=None, minimum_initial_time=100*ms,
+                 use_standalone_openmp=False):
+    if use_standalone_openmp:
+        prefs.devices.cpp_standalone.openmp_threads = multiprocessing.cpu_count()/2 # assume hyperthreading
+        set_device('cpp_standalone', with_output=True)
     seed(3402348923) # for reproducibility
     if fm is None:
         fm = dietz_fm
@@ -157,6 +164,9 @@ def simple_model(N, params, record=None, update_progress=None,
             v.shape = (N, len(dietz_fm), -1)
             setattr(res, name, v)
         res.t = M.t[:]
+    if use_standalone_openmp:
+        reset_device()
+        reinit_devices()
     return res
 
 @mem.cache
