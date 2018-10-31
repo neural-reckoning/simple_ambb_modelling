@@ -30,6 +30,8 @@ from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 import matplotlib.patches as patches
 from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter, median_filter
+import numba
+import numpy
 
 from simple_model import *
 from model_explorer_jupyter import meshed_arguments
@@ -121,7 +123,7 @@ def plot_cell_types(M, num_params, params,
     array_kwds = meshed_arguments(selected_axes+('temp',), params, axis_ranges)
     del array_kwds['temp']
     # Run the model
-    res = simple_model(M*M*num_params, array_kwds, update_progress='text')
+    res = simple_model(M*M*num_params, array_kwds, update_progress='text', use_standalone_openmp=True)
     res = simple_model_results(M*M*num_params, res, error_func, weighted,
                                interpolate_bmf=True, shape=(M, M, num_params))
     # Analyse the data
@@ -168,9 +170,8 @@ def plot_cell_types(M, num_params, params,
     # Error map
     extent = (params[vx]+params[vy])
     subplot(gs_maps[0:2, 0:2]) # error
-    blur_width = 0.02
     mse_summary = median_filter(mse_summary, mode='nearest', size=5)
-    mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
+    mse_summary_blur = gaussian_filter(mse_summary, 2, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
            interpolation='nearest', extent=extent, vmin=0, vmax=135)
     cs = contour(mse_summary_blur, origin='lower',
@@ -258,7 +259,17 @@ def plot_cell_types(M, num_params, params,
                     values = (values[cond]-high)/(high-low)
                     all_values.append(values)
                 all_values = array(all_values) # shape (num_params, sum(cond))
-                ex_idx = argmin(sum(sum((all_values[:, :, newaxis]-all_values[:, newaxis, :])**2, axis=0), axis=1))
+                # too large to compute in memory for largest simulation, so use numba
+                #ex_idx = argmin(sum(sum((all_values[:, :, newaxis]-all_values[:, newaxis, :])**2, axis=0), axis=1))
+                output = zeros(all_values.shape[1])
+                @numba.jit(nopython=True)
+                def ex_idx_reduction(all_values, output):
+                    for i in range(all_values.shape[0]):
+                        for j in range(all_values.shape[1]):
+                            for k in range(all_values.shape[1]):
+                                output[k] += (all_values[i, j]-all_values[i, k])**2
+                ex_idx_reduction(all_values, output)
+                ex_idx = argmin(output)
             region_params = {}        
             for paramname in params.keys():
                 values = reshape(res.raw.params[paramname], (M, M, num_params))
@@ -316,9 +327,9 @@ def plot_cell_types(M, num_params, params,
 
     
 plot_cell_types(
-    #M=10, num_params=20,
-    #M=20, num_params=100,
-    M=40, num_params=100,
+    M=20, num_params=100, # 40k parameter sets total, 2m
+    #M=40, num_params=100, # 160k parameter sets total, 5-10m
+    #M=80, num_params=500, # 3.2M parameter sets total, several hours
     num_examples_to_show=10,
     example_alpha=.2,
     weighted=False, error_func_name='Max error',

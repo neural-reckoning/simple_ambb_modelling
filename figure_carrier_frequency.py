@@ -62,66 +62,7 @@ latex_parameter_names = dict(
     tauihc_ms=r"$\tau_\mathrm{IHC}$ (ms)",
     )
 
-# +
-def plot_curves(N, params, error_func=maxnorm, weighted=False):
-    # run the model at 500 Hz
-    params['fc_Hz'] = 500
-    seed(342309432)
-    start_time = time.time()
-    res500 = simple_model(N, params, update_progress='text', use_standalone_openmp=True)
-    res500 = simple_model_results(N, res500, error_func, weighted=weighted)
-    # run the model at 200 Hz
-    params['fc_Hz'] = 200
-    seed(342309432)
-    res200 = simple_model(N, params, update_progress='text', use_standalone_openmp=True)
-    res200 = simple_model_results(N, res200, error_func, weighted=weighted,
-                                  target_phase=ones(5)*pi)
-    end_time = time.time()
-    print 'Time taken: %ds' % (end_time-start_time)
-    # analyse
-    mse = maximum(res500.mse, res200.mse/4)
-    idx_best = argmin(mse)
-    s = []
-    for paramname in params.keys():
-        if paramname!='fc_Hz':
-            s.append('%s=%.2f' % (paramname, res500.raw.params[paramname][idx_best]))
-    print 'Best params: '+', '.join(s)
-    # plot it
-    transp = clip(0.3*100./N, 0.01, 1)
-    plot(dietz_fm/Hz, res500.peak_phase[idx_best, :]*180/pi, '-C0', lw=2, label='Best model 500 Hz')
-    plot(dietz_fm/Hz, res200.peak_phase[idx_best, :]*180/pi, '-C1', lw=2, label='Best model 200 Hz')
-    errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data 500 Hz')
-    handles, labels = gca().get_legend_handles_labels()
-    lab2hand = OrderedDict()
-    for h, l in zip(handles, labels):
-        lab2hand[l] = h
-    legend(lab2hand.values(), lab2hand.keys(), loc='upper left')
-    grid()
-    xticks([4, 8, 16, 32, 64])
-    ylim(0, 360)
-    xlabel('Modulation frequency (Hz)')
-    ylabel('Extracted phase (deg)')
-    if 0:
-        mseflatdeg = mse.flatten()*180/pi
-        for i, paramname in enumerate(params.keys()):
-            if paramname!='fc_Hz':
-                figure()
-                values = res200.raw.params[paramname]
-                values = values[mseflatdeg<45]
-                hist(values, bins=20, range=params[paramname], histtype='stepfilled',
-                     fc='lightgray')
-                xlim(params[paramname])
-                yticks([])
-                title(latex_parameter_names[paramname])
-    
-plot_curves(N=10000,
-            params=dict(
-                taui_ms=(0.1, 10), taue_ms=(0.1, 2.5), taua_ms=(0.1, 10),
-                level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
-                gamma=(0.1, 1),
-                tauihc_ms=(0.1, 2.5),
-                ),
-           )
+# This is the cell types figure adapted to the carrier frequency analysis.
 
 # +
 def where_close_to_best(mse, max_error):
@@ -204,7 +145,7 @@ def plot_cell_types(M, num_params, params,
     
     # Plot the data
     fig = figure(figsize=(10, 10))
-    gs_maps = GridSpec(2, 8, left=.0, bottom=.7, top=1, width_ratios=[1]*7+[0.5])
+    gs_maps = GridSpec(2, 9, left=.0, bottom=.7, top=1, width_ratios=[1]*8+[0.5])
     gs_hist = GridSpec(3, 4, left=.05, bottom=0.25, top=0.7)
     gs_ex = GridSpec(1, 5, left=.05, bottom=0.0, top=0.24)
     ordered_gridspecs = [gs_maps, gs_hist, gs_ex]
@@ -215,7 +156,7 @@ def plot_cell_types(M, num_params, params,
         gca().add_patch(p)
 
     # Map colourbar
-    subplot(gs_maps[0:2, 7])
+    subplot(gs_maps[0:2, 8])
     s, v = meshgrid(linspace(0, 1, 20), linspace(0, 1, 20))
     img = cm.viridis(v)[:, :, :3] # convert to rgb, discard alpha
     img = desaturate(img, s**2) # desaturate image
@@ -249,7 +190,7 @@ def plot_cell_types(M, num_params, params,
     # Property maps
     cell_properties = dict([
         ('tMTF', (meanvs, 0, 1)),
-        ('tMD', (res.moddepth['mean'], 0, 1)),
+        ('tMD', (res.moddepth['vs'], 0, 1)),
         ('tBMF', (res.bmf['vs'], 4, 64)),
         ('rMD', (res.moddepth['mean'], 0, 1)),
         ('rBMF', (res.bmf['mean'], 4, 64)),
@@ -366,10 +307,169 @@ def plot_cell_types(M, num_params, params,
         text(0.02, loc, c, fontsize=14, transform=fig.transFigure,
              horizontalalignment='left', verticalalignment='top')
 
-plot_cell_types(
+if 0: # change this to 1 to run this
+    plot_cell_types(
+        #M=10, num_params=20,
+        #M=20, num_params=100,
+        M=40, num_params=200,
+        weighted=False, error_func_name='Max error',
+        max_error=30,
+        params=dict(
+            taui_ms=(0.1, 10), taue_ms=(0.1, 2.5), taua_ms=(0.1, 10),
+            level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
+            gamma=(0.1, 1),
+            tauihc_ms=(0.1, 2.5),
+            ),
+        )
+# -
+
+# This is the carrier frequency figure for the paper (reduced version of above).
+
+# +
+def plot_carrier_frequency(M, num_params, params,
+                           weighted, error_func_name,
+                           max_error=30, discount_200=3.):
+    # always use the same random seed for cacheing
+    seed(34032483)    
+    # Set up ranges of variables, and generate arguments to pass to model function
+    vx, vy = selected_axes = ('alpha', 'beta')
+    error_func = error_functions[error_func_name]
+    axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in params.items() if k in selected_axes)
+    axis_ranges['temp'] = zeros(num_params)
+    array_kwds = meshed_arguments(selected_axes+('temp',), params, axis_ranges)
+    del array_kwds['temp']
+    # run the model at 500 Hz
+    array_kwds['fc_Hz'] = 500
+    seed(342309432)
+    res500 = simple_model(M*M*num_params, array_kwds, update_progress='text', use_standalone_openmp=True)
+    res500 = simple_model_results(M*M*num_params, res500, error_func, weighted=weighted,
+                                  interpolate_bmf=True, shape=(M, M, num_params))
+    # run the model at 200 Hz
+    array_kwds['fc_Hz'] = 200
+    seed(342309432)
+    res200 = simple_model(M*M*num_params, array_kwds, update_progress='text', use_standalone_openmp=True)
+    res200 = simple_model_results(M*M*num_params, res200, error_func, weighted=weighted,
+                                  target_phase=ones(5)*pi,
+                                  interpolate_bmf=True, shape=(M, M, num_params))
+    # analyse
+    res = res200
+    mse = maximum(res500.mse, res200.mse/discount_200)
+    mse = mse*180/pi
+    mse_summary = amin(mse, axis=2)
+    cell_properties = dict([
+        ('tMTF', (mean(res200.raw_measures['vs'], axis=3), mean(res500.raw_measures['vs'], axis=3), 0, 1)),
+        ('tMD', (res200.moddepth['vs'], res500.moddepth['vs'], 0, 1)),
+        ('rMD', (res200.moddepth['mean'], res500.moddepth['mean'], 0, 1)),
+        ])
+    
+    # Plot the data
+    fig = figure(figsize=(10, 5.5))
+    gs = GridSpec(3, 5)
+    
+    # Error map
+    extent = (params[vx]+params[vy])
+    subplot(gs[0:2, 0:2]) # error
+    mse_summary = median_filter(mse_summary, mode='nearest', size=5)
+    mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
+    imshow(mse_summary, origin='lower left', aspect='auto',
+           interpolation='nearest', extent=extent, vmin=0, vmax=135)
+    colorbar()
+    cs = contour(mse_summary_blur, origin='lower',
+                 levels=[15, 30, 45], colors='w',
+                 extent=extent)
+    clabel(cs, colors='w', inline=True, fmt='%d')
+    title('Max error (deg)')
+    xlabel(r'Adaptation strength $\alpha$')
+    ylabel(r'Inhibition strength $\beta$')
+
+    # Region examples
+    ax_lf = subplot(gs[2, 0])
+    ax_hf = subplot(gs[2, 1])
+    ax_phase = subplot(gs[2, 2])
+    ax_rmtf = subplot(gs[2, 3])
+    ax_tmtf = subplot(gs[2, 4])
+    ax_lf.set_title(r'$f_m=4$ Hz')
+    ax_hf.set_title(r'$f_m=64$ Hz')
+    ax_rmtf.set_title('rMTF')
+    ax_tmtf.set_title('tMTF')
+    phase = linspace(0, 2*pi, 100)
+    env = 0.5*(1-cos(phase))
+    for ax in [ax_lf, ax_hf]:
+        ax.fill_between(phase*180/pi, 0, env, color=(0.9,) * 3, zorder=-2)
+        ax.set_xlabel('Phase (deg)')
+        ax.set_xticks([0, 90, 180, 270, 360])
+        ax.set_xlim(0, 360)
+        ax.set_yticks([])
+        ax.set_ylim(0, 1)
+    for ax in [ax_rmtf, ax_tmtf, ax_phase]:
+        ax.set_xlabel(r'$f_m$')
+        ax.set_xticks([4, 8, 16, 32, 64])
+        ax.set_ylim(0, 1)
+    ax_phase.errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--or', label='Data')
+    ax_phase.set_ylim(0, 190)
+    ax_phase.set_yticks([0, 45, 90, 135, 180])
+    ax_phase.axhline(180, ls='--', c='k')
+    ax_phase.set_title('Phase (deg)')
+    # Construct best parameter values
+    best_params = {}
+    idx_best = unravel_index(argmin(mse), mse.shape) # a triple
+    for paramname in params.keys():
+        best_params[paramname] = reshape(res.raw.params[paramname], (M, M, num_params))[idx_best]
+    for fc_Hz, c, target_phase in [(200, 'C0', ones(5)*pi),
+                                   (500, 'C1', None)]:
+        best_params['fc_Hz'] = fc_Hz
+        cur_res = simple_model(1, best_params, record=['out'])
+        cur_res = simple_model_results(1, cur_res, error_func, weighted, interpolate_bmf=True,
+                                       target_phase=target_phase)
+        print 'Best params', cur_res.mse*180/pi, best_params
+        out = cur_res.raw.out
+        t = cur_res.raw.t
+        for j, ax in [(0, ax_lf), (-1, ax_hf)]:
+            I = logical_and(t>=cur_res.raw.start_time[j], t<cur_res.raw.end_time[j])
+            phase = ((2*pi*dietz_fm[j]*t[I])%(2*pi))*180/pi
+            ax.plot(phase, normed(out[0, j, I]), c=c)
+        ax_phase.plot(dietz_fm, cur_res.peak_phase[0]*180/pi, c=c)
+        ax_rmtf.plot(dietz_fm, cur_res.norm_measures['mean'].T, c=c)
+        ax_tmtf.plot(dietz_fm, cur_res.raw_measures['vs'].T, c=c)
+
+    # Parameter histograms
+    for i, paramname in enumerate(['beta', 'taui_ms', 'tauihc_ms',
+                                   'tMTF', 'tMD', 'rMD']):
+        subplot(gs[i//3, 2+i%3])
+        if paramname in res.raw.params:
+            values = reshape(res.raw.params[paramname], (M, M, num_params))
+            low, high = params[paramname]
+            v = values[mse<max_error]
+            hist(v, bins=M, range=(low, high), histtype='stepfilled', fc='gray')
+        else:
+            values200, values500, low, high = cell_properties[paramname]
+            for values, c, lab in [(values200, 'C0', '200 Hz'), (values500, 'C1', '500 Hz')]:
+                v = values[mse<max_error]
+                hy, hx = histogram(v, bins=M, range=(low, high))
+                bar(hx[:-1], 1.0*hy/amax(hy), diff(hx), align='edge', color=c, edgecolor='none', label=lab)
+                #hist(v, bins=M, range=(low, high), histtype='stepfilled', fc=c, label=lab)
+            if paramname=='tMD':
+                legend(loc='upper right', fontsize='x-small')
+        xlim(low, high)
+        yticks([])
+        title(latex_parameter_names.get(paramname, paramname))
+
+    # Tight layout
+    tight_layout()
+    # annotate
+    for c, loc in zip('ABC', [(0, 0), (0, 2), (2, 0)]):
+        bbox = gs[loc].get_position(fig)
+        text(bbox.x0-0.06, bbox.y1+0.05, c, fontsize=14, transform=fig.transFigure,
+             horizontalalignment='left', verticalalignment='top')
+    #for c, loc in zip('ABC', [.98, .68, .23]):
+    #    text(0.02, loc, c, fontsize=14, transform=fig.transFigure,
+    #         horizontalalignment='left', verticalalignment='top')
+
+plot_carrier_frequency(
     #M=10, num_params=20,
     #M=20, num_params=100,
     M=40, num_params=200,
+    #M=80, num_params=500, # 3.2M param sets, several hours
     weighted=False, error_func_name='Max error',
     max_error=30,
     params=dict(
