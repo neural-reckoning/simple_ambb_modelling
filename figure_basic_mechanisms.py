@@ -140,8 +140,8 @@ def with_model(name, row, only_this=False, **params):
     ylabel('Extracted phase (deg)')
     tight_layout()
 
-# Inhibition only
-# with_model("Inhibition", 1, True,
+# Onset only
+# with_model("Onset", 1, True,
 #            taui_ms=1.56, fc_Hz=0.00, level=0.00, tauihc_ms=0.00,
 #            taua_ms=6.69, beta=1.06, alpha=0.00, taue_ms=0.63, gamma=1.00)
 # Adaptation only
@@ -156,10 +156,11 @@ with_model("Complex model", 1, True,
 
 # Full figure:
 
+# +
 figure(dpi=75, figsize=(10, 10))
 pure_differentiation()
-# Inhibition only
-with_model("Inhibition", 2, False,
+# Onset only
+with_model("Onset", 2, False,
            taui_ms=1.56, fc_Hz=0.00, level=0.00, tauihc_ms=0.00,
            taua_ms=6.69, beta=1.06, alpha=0.00, taue_ms=0.63, gamma=1.00)
 # Adaptation only
@@ -170,4 +171,9 @@ with_model("Adaptation", 3, False,
 with_model("Complex model", 4, False,
            taui_ms=7.51, fc_Hz=0.00, level=18.73, tauihc_ms=0.00,
            taua_ms=3.78, beta=0.41, alpha=0.72, taue_ms=1.38, gamma=0.84)
+# Annotations
+for i, c in enumerate('ABCD'):
+    text(0.02, 0.98-0.96*i/4, c, fontsize=22, transform=gcf().transFigure,
+         horizontalalignment='left', verticalalignment='top')
+
 savefig('figure_basic_mechanism.pdf')

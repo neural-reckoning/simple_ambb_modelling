@@ -180,7 +180,7 @@ def plot_cell_types(M, num_params, params,
     clabel(cs, colors='w', inline=True, fmt='%d')
     title('Max error (deg)')
     xlabel(r'Adaptation strength $\alpha$')
-    ylabel(r'Inhibition strength $\beta$')
+    ylabel(r'Onset strength $\beta$')
 
     # Property maps
     cell_properties = dict([
@@ -327,9 +327,9 @@ def plot_cell_types(M, num_params, params,
 
     
 plot_cell_types(
-    M=20, num_params=100, # 40k parameter sets total, 2m
+    #M=20, num_params=100, # 40k parameter sets total, 2m
     #M=40, num_params=100, # 160k parameter sets total, 5-10m
-    #M=80, num_params=500, # 3.2M parameter sets total, several hours
+    M=80, num_params=500, # 3.2M parameter sets total, several hours
     num_examples_to_show=10,
     example_alpha=.2,
     weighted=False, error_func_name='Max error',

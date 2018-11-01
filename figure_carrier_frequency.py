@@ -19,7 +19,7 @@
 #     version: 2.7.15
 # ---
 
-# # VERY MUCH NOT FINISHED
+# # Carrier frequency figure
 
 # +
 # %matplotlib notebook
@@ -185,7 +185,7 @@ def plot_cell_types(M, num_params, params,
     clabel(cs, colors='w', inline=True, fmt='%d')
     title('Max error (deg)')
     xlabel(r'Adaptation strength $\alpha$')
-    ylabel(r'Inhibition strength $\beta$')
+    ylabel(r'Onset strength $\beta$')
 
     # Property maps
     cell_properties = dict([
@@ -370,7 +370,7 @@ def plot_carrier_frequency(M, num_params, params,
     extent = (params[vx]+params[vy])
     subplot(gs[0:2, 0:2]) # error
     mse_summary = median_filter(mse_summary, mode='nearest', size=5)
-    mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
+    mse_summary_blur = gaussian_filter(mse_summary, 2, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
            interpolation='nearest', extent=extent, vmin=0, vmax=135)
     colorbar()
@@ -380,7 +380,7 @@ def plot_carrier_frequency(M, num_params, params,
     clabel(cs, colors='w', inline=True, fmt='%d')
     title('Max error (deg)')
     xlabel(r'Adaptation strength $\alpha$')
-    ylabel(r'Inhibition strength $\beta$')
+    ylabel(r'Onset strength $\beta$')
 
     # Region examples
     ax_lf = subplot(gs[2, 0])
@@ -461,15 +461,12 @@ def plot_carrier_frequency(M, num_params, params,
         bbox = gs[loc].get_position(fig)
         text(bbox.x0-0.06, bbox.y1+0.05, c, fontsize=14, transform=fig.transFigure,
              horizontalalignment='left', verticalalignment='top')
-    #for c, loc in zip('ABC', [.98, .68, .23]):
-    #    text(0.02, loc, c, fontsize=14, transform=fig.transFigure,
-    #         horizontalalignment='left', verticalalignment='top')
 
 plot_carrier_frequency(
     #M=10, num_params=20,
     #M=20, num_params=100,
-    M=40, num_params=200,
-    #M=80, num_params=500, # 3.2M param sets, several hours
+    #M=40, num_params=200,
+    M=80, num_params=500, # 3.2M param sets, several hours
     weighted=False, error_func_name='Max error',
     max_error=30,
     params=dict(
