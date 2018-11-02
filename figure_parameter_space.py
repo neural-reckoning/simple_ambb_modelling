@@ -24,7 +24,7 @@
 # TODO:
 #
 # * Better parameters for onset only solution if there are any
-# * Or, change the figure and get rid of the 2d maps, and maybe add back in nu
+# * Or, change the figure and get rid of the 2d maps, and maybe add back in number of solutions?
 
 # +
 # %matplotlib notebook
