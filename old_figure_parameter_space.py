@@ -82,7 +82,7 @@ def map2d(M, weighted, error_func_name, **kwds):
     axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
     array_kwds = meshed_arguments(selected_axes, kwds, axis_ranges)
     # Run the model
-    res = simple_model(M*M, array_kwds)
+    res = simple_model(M*M, array_kwds, use_standalone_openmp=True)
     res = simple_model_results(M*M, res, error_func, weighted, shape=(M, M))
     mse = res.mse
     # Properties of lowest MSE value
@@ -132,7 +132,7 @@ def popmap(M, num_params, blur_width, error_cutoff_deg,
     array_kwds = meshed_arguments(selected_axes+('temp',), kwds, axis_ranges)
     del array_kwds['temp']
     # Run the model
-    res = simple_model(M*M*num_params, array_kwds)
+    res = simple_model(M*M*num_params, array_kwds, use_standalone_openmp=True)
     res = simple_model_results(M*M*num_params, res, error_func, weighted, shape=(M, M, num_params))
     mse = res.mse
     # Analyse the data
@@ -184,7 +184,7 @@ def parameter_space(N, M, M_popmap,
     # Get simple parameters
     error_func = error_functions[error_func_name]
     # Run the model
-    res = simple_model(N, search_params)
+    res = simple_model(N, search_params, use_standalone_openmp=True)
     res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=interpolate_bmf)
     mse = res.mse
     peak_phase = res.peak_phase
