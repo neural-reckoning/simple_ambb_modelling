@@ -74,43 +74,6 @@ latex_parameter_names = dict(
 # Run analysis and plot figure
 
 # +
-def map2d(M, weighted, error_func_name, **kwds):
-    global curfig
-    # Set up ranges of variables, and generate arguments to pass to model function
-    error_func = error_functions[error_func_name]
-    vx, vy = selected_axes = ('alpha', 'beta')
-    axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
-    array_kwds = meshed_arguments(selected_axes, kwds, axis_ranges)
-    # Run the model
-    res = simple_model(M*M, array_kwds, use_standalone_openmp=True)
-    res = simple_model_results(M*M, res, error_func, weighted, shape=(M, M))
-    mse = res.mse
-    # Properties of lowest MSE value
-    idx_best_y, idx_best_x = unravel_index(argmin(mse), mse.shape)
-    xbest = axis_ranges[vx][idx_best_x]
-    ybest = axis_ranges[vy][idx_best_y]
-    print 'Best: {vx} = {xbest}, {vy} = {ybest}'.format(vx=vx, vy=vy, xbest=xbest, ybest=ybest)
-    # Plot the data
-    extent = (kwds[vx]+kwds[vy])
-    def labelit(titletext):
-        plot([xbest], [ybest], '+w')
-        title(titletext)
-        xlabel(r'Adaptation strength $\alpha$')
-        ylabel(r'Onset strength $\beta$')
-        cb = colorbar()
-        cb.set_label(titletext, rotation=270, labelpad=20)
-
-    mse_deg = mse*180/pi
-    mse_deg_blur = gaussian_filter(mse_deg, 2, mode='nearest')
-    imshow(mse_deg, origin='lower left', aspect='auto',
-           interpolation='nearest', vmin=0, extent=extent)
-    labelit(error_func_name)
-    cs = contour(mse_deg_blur, origin='lower', #aspect='auto',
-                 levels=[15, 30, 45], colors='w',
-                 extent=extent)
-    clabel(cs, colors='w', inline=True, fmt='%d')
-
-    
 population_summary_methods = {
     'Mean': mean,
     'Best': amin,
@@ -153,9 +116,9 @@ def popmap(M, num_params, weighted, error_func_name,
     clabel(cs, colors='w', inline=True, fmt='%d')
     
 
-def parameter_space(N, M, M_popmap, num_params,
+def parameter_space(N, M_popmap, num_params,
                     weighted, error_func_name, error_cutoffs,
-                    search_params, adapt_params, onset_params,
+                    search_params,
                     N_show, transp,
                     interpolate_bmf=True,
                     ):
@@ -180,16 +143,17 @@ def parameter_space(N, M, M_popmap, num_params,
     print 'Best: ' + ', '.join(bestvals)
     
     ############# Plot the data
-    curfig = figure(dpi=65, figsize=(8, 7))
+    curfig = figure(dpi=65, figsize=(8, 3.5))
     
     # We only want to show N_show good peak phase curves, so we apply some criteria
     idx_keep = amax(peak_phase, axis=1)>1*pi/180
+    idx_keep = idx_keep & (amin(peak_phase, axis=1)>0)
     idx_keep = idx_keep & (amin(peak_phase, axis=1)<=pi)
     idx_keep = idx_keep & (amax(abs(diff(peak_phase, axis=1)), axis=1)<pi/2)
     idx_keep, = idx_keep.nonzero()
     idx_keep = idx_keep[:N_show]
     # Plot the extracted phase curves
-    subplot(221)
+    subplot(121)
     plot(dietz_fm/Hz, peak_phase[idx_keep, :].T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
     plot(dietz_fm/Hz, best_peak_phase*180/pi, '-ko', lw=2, label='Model (best)')
     errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data')
@@ -203,27 +167,8 @@ def parameter_space(N, M, M_popmap, num_params,
     xticks(dietz_fm/Hz)
     xlabel('Modulation frequency (Hz)')
     ylabel('Extracted phase (deg)')
-    
-    # Find the best parameters to maximise the number of good
-    # solutions in the alpha-beta plane when alpha close to 0
-    indices = (res.raw.params['alpha']<0.1) & (mse<30*pi/180)
-    print sum(indices), len(indices)
-    # todo: finish this idea
-        
-    # Plot 2D maps
-    subplot(223)
-    params = search_params.copy()
-    params.update(adapt_params)
-    map2d(M, weighted, error_func_name, **params)
-    title('Near adaptation best-fit')
-    
-    subplot(224)
-    params = search_params.copy()
-    params.update(onset_params)
-    map2d(M, weighted, error_func_name, **params)
-    title('Near onset best-fit')
-    
-    subplot(222)
+    # Plot the best fits
+    subplot(122)
     popmap(M=M_popmap, num_params=num_params,
            weighted=weighted, error_func_name=error_func_name,
            **search_params)
@@ -232,15 +177,15 @@ def parameter_space(N, M, M_popmap, num_params,
     tight_layout()
 
     # Label panels
-    for i, c in enumerate('ABCD'):
-        text(0.5*(i%2), .96-0.5*(i//2), c,
+    for i, c in enumerate('AB'):
+        text(0.48*i, .92, c,
              transform=gcf().transFigure, fontsize=16)
 
         
-# N = 1000; M=20; M_popmap=10; num_params=20 # quick, low quality
-N = 10000; M=40; M_popmap=20; num_params=100 # medium quality
+# N = 1000; M_popmap=10; num_params=20 # quick, low quality
+N = 10000; M_popmap=20; num_params=100 # medium quality
 
-parameter_space(N=N, M=M, M_popmap=M_popmap, num_params=num_params,
+parameter_space(N=N, M_popmap=M_popmap, num_params=num_params,
                 weighted=False, error_func_name="Max error",
                 error_cutoffs=[15, 30, 45],
                 N_show=1000, transp=0.1,
@@ -248,39 +193,5 @@ parameter_space(N=N, M=M, M_popmap=M_popmap, num_params=num_params,
                     taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
                     level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
                     gamma=(0.1, 1)),
-                adapt_params=dict(
-                    taui_ms=8.39, level=9.27, taua_ms=1.90, taue_ms=1.22, gamma=0.78,
-                    #taui_ms=3.03, level=20.13, taua_ms=2.98, taue_ms=2.27, gamma=0.81
-                    ),
-                onset_params=dict(
-                    taui_ms=2.22, level=4.49, taua_ms=8.94, taue_ms=0.16, gamma=0.70,
-                    #taui_ms=1.42, level=19.07, taua_ms=5.39, taue_ms=0.67, gamma=0.79
-                    #taue_ms=0.66080737, taui_ms=0.67612163, level=0, taua_ms=1, gamma=1.0,
-                    ),
                )
 savefig('figure_parameter_space.pdf')
-# -
-
-# Optimisation of analytic solution of onset only model
-from scipy.optimize import curve_fit
-def onsetphi(fm, beta, taue, taui):
-    sigmae = 2*pi*fm*taue
-    sigmai = 2*pi*fm*taui
-    return arctan2(beta*sigmai+beta*sigmae**2*sigmai-sigmae*(1+sigmai**2),
-                   beta-1+beta*sigmae**2-sigmai**2)
-#f = lambda fm, A: arctan(A*fm) # approximate
-f = lambda fm, beta, taue, taui: onsetphi(fm*Hz, beta, taue*ms, taui*ms) # exact
-popt, pcov = curve_fit(f, dietz_fm, dietz_phase,
-                       # use lines below for exact solution for a good start
-                       p0=(1.2, 0.1, 2.0),
-                       bounds=([0, 0, 0], [inf, inf, inf]),
-                      )
-print popt
-figure()
-plot(dietz_fm, dietz_phase, '-r')
-plot(dietz_fm, f(dietz_fm/Hz, *popt), '-k')
-ylim(0,pi)
-
-(64*Hz*2*ms)**2
-
-

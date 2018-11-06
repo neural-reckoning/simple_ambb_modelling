@@ -363,11 +363,11 @@ def plot_population_space(**kwds):
                  label="Error<%d deg" % error_cutoff)
     
     tight_layout()
+# -
 
-# + {"cell_type": "markdown", "heading_collapsed": true}
 # ### Combined population / 2D map
 
-# + {"init_cell": true, "hidden": true}
+# + {"init_cell": true}
 def amin_from_to(arr_from, arr_to):
     i, j = mgrid[:arr_from.shape[0], :arr_from.shape[1]]
     k = argmin(arr_from, axis=2)
@@ -383,6 +383,11 @@ def plot_population_map(selected_axes, **kwds):
     # always use the same random seed for cacheing
     seed(34032483)
     # Set up ranges of variables, and generate arguments to pass to model function
+    use_mp = kwds.pop('use_mp')
+    if use_mp:
+        progress = 'text'
+    else:
+        progress = update_progress
     pop_summary_name = kwds.pop('pop_summary')
     pop_summary = population_summary_methods[pop_summary_name]
     error_func_name = kwds.pop('error_func')
@@ -414,12 +419,12 @@ def plot_population_map(selected_axes, **kwds):
     if paired_frequency_analysis:
         array_kwds['fc_Hz'] = paired_lf
         seed(34032483)
-        res_lf = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
+        res_lf = simple_model(M*M*num_params, array_kwds, update_progress=progress, use_standalone_openmp=use_mp)
         res_lf = simple_model_results(M*M*num_params, res_lf, error_func, weighted,
                                       interpolate_bmf=interpolate_bmf, shape=(M, M, num_params))
         array_kwds['fc_Hz'] = paired_hf
         seed(34032483)
-        res_hf = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
+        res_hf = simple_model(M*M*num_params, array_kwds, update_progress=progress, use_standalone_openmp=use_mp)
         res_hf = simple_model_results(M*M*num_params, res_hf, error_func, weighted,
                                       interpolate_bmf=interpolate_bmf, shape=(M, M, num_params))
         if show_LF:
@@ -428,7 +433,7 @@ def plot_population_map(selected_axes, **kwds):
             res = res_hf
         mse = maximum(lf_weight*res_lf.mse, res_hf.mse)
     else:
-        res = simple_model(M*M*num_params, array_kwds, update_progress=update_progress)
+        res = simple_model(M*M*num_params, array_kwds, update_progress=progress, use_standalone_openmp=use_mp)
         res = simple_model_results(M*M*num_params, res, error_func, weighted,
                                    interpolate_bmf=interpolate_bmf, shape=(M, M, num_params))
         mse = res.mse
@@ -600,6 +605,8 @@ def population_map():
     params = range_sliders.copy()
     current_pop_map_widgets.clear()
     current_pop_map_widgets.update(params)
+    params['use_mp'] = full_width_widget(
+        ipw.Checkbox(description="Use multiple processors", value=False))
     params['pop_summary'] = full_width_widget(
         ipw.Dropdown(description="Population summary method",
                      options=population_summary_methods.keys(),
