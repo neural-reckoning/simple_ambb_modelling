@@ -48,5 +48,3 @@ ylabel('Phase (deg)')
 xlabel(r'Modulation frequency $f_m$')
 legend(loc='upper left')
 savefig('figure_onset_analytic.pdf')
-
-
