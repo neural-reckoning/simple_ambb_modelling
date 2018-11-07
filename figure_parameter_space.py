@@ -102,7 +102,7 @@ def popmap(M, num_params, weighted, error_func_name,
     # Plot the data
     extent = (kwds[vx]+kwds[vy])    
     mse_summary = median_filter(mse_summary, mode='nearest', size=5)
-    mse_summary_blur = gaussian_filter(mse_summary, 2, mode='nearest')
+    mse_summary_blur = gaussian_filter(mse_summary, 3, mode='nearest')
     imshow(mse_summary, origin='lower left', aspect='auto',
            interpolation='nearest', vmin=0, extent=extent)
     title('Best fits close to overall best fit')
@@ -183,7 +183,8 @@ def parameter_space(N, M_popmap, num_params,
 
         
 # N = 1000; M_popmap=10; num_params=20 # quick, low quality
-N = 10000; M_popmap=20; num_params=100 # medium quality
+#N = 10000; M_popmap=20; num_params=100 # medium quality
+N = 10000; M_popmap=80; num_params=500 # high quality (will take many hours to run)
 
 parameter_space(N=N, M_popmap=M_popmap, num_params=num_params,
                 weighted=False, error_func_name="Max error",
