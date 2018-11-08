@@ -296,8 +296,6 @@ def plot_cell_types(M, num_params, params,
 
         
     # Histograms
-    #for i, paramname in enumerate(params.keys()):
-    #for i, paramname in enumerate(['alpha', 'beta', 'gamma', 'level', 'taue_ms', 'taui_ms', 'taua_ms']):
     for i, paramname in enumerate(['alpha', 'beta', 'gamma', 'level', 'taue_ms', 'taui_ms', 'taua_ms',
                                    'tMTF', 'tMD', 'tBMF', 'rMD', 'rBMF']):
         subplot(gs_hist[i//4, i%4])

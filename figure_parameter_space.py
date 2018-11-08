@@ -20,11 +20,6 @@
 # ---
 
 # # Parameter space figure
-#
-# TODO:
-#
-# * Better parameters for onset only solution if there are any
-# * Or, change the figure and get rid of the 2d maps, and maybe add back in number of solutions?
 
 # +
 # %matplotlib notebook
@@ -32,12 +27,12 @@ from brian2 import *
 from collections import OrderedDict
 from scipy.interpolate import interp1d
 from matplotlib import cm
-from matplotlib.gridspec import GridSpecFromSubplotSpec
 import joblib
 from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter, median_filter
 from simple_model import *
 from model_explorer_jupyter import meshed_arguments
+import itertools
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
@@ -186,13 +181,66 @@ def parameter_space(N, M_popmap, num_params,
 #N = 10000; M_popmap=20; num_params=100 # medium quality
 N = 10000; M_popmap=80; num_params=500 # high quality (will take many hours to run)
 
+search_params = dict(
+    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
+    level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
+    gamma=(0.1, 1))
+
 parameter_space(N=N, M_popmap=M_popmap, num_params=num_params,
                 weighted=False, error_func_name="Max error",
                 error_cutoffs=[15, 30, 45],
                 N_show=1000, transp=0.1,
-                search_params=dict(
-                    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
-                    level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
-                    gamma=(0.1, 1)),
+                search_params=search_params,
                )
 savefig('figure_parameter_space.pdf')
+
+# +
+def look_for_correlations(N, search_params,
+                          weighted=False, error_func_name="Max error",
+                          max_error=30,
+                         ):
+    # always use the same random seed for cacheing
+    seed(34032483)
+    # Get simple parameters
+    error_func = error_functions[error_func_name]
+    # Run the model
+    res = simple_model(N, search_params, use_standalone_openmp=True)
+    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
+    mse = res.mse
+    good_indices = mse<max_error*pi/180
+    # plot a histogram to check we're good
+    figure(figsize=(8, 8), dpi=85)
+    nparam = len(res.raw.params)
+    gs = GridSpec(nparam-1, nparam-1, wspace=0, hspace=0)
+    #for (px, vx), (py, vy) in itertools.combinations(res.raw.params.items(), 2):
+    for i in xrange(nparam):
+        for j in xrange(i+1, nparam):
+            px = res.raw.params.keys()[i]
+            py = res.raw.params.keys()[j]
+            vx = res.raw.params[px]
+            vy = res.raw.params[py]
+            vx = vx[good_indices]
+            vy = vy[good_indices]
+            subplot(gs[j-1, i])
+            plot(vx, vy, ',')
+            xlim(*search_params[px])
+            ylim(*search_params[py])
+            if j==nparam-1:
+                xlabel(latex_parameter_names[px])
+                xticks(search_params[px])
+                ticklabels = gca().get_xticklabels()
+                ticklabels[0].set_ha('left')
+                ticklabels[-1].set_ha('right')
+            else:
+                xticks([])
+            if i==0:
+                ylabel(latex_parameter_names[py])
+                yticks(search_params[py])
+                ticklabels = gca().get_yticklabels()
+                ticklabels[0].set_va('bottom')
+                ticklabels[-1].set_va('top')
+            else:
+                yticks([])
+    tight_layout()
+
+look_for_correlations(N=50000, search_params=search_params)
