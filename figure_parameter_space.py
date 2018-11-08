@@ -195,10 +195,81 @@ parameter_space(N=N, M_popmap=M_popmap, num_params=num_params,
 savefig('figure_parameter_space.pdf')
 
 # +
+from scipy import stats
+
+# # Take a series of x, y points and plot a density map using kernel density estimation
+# # N is the grid size for the density image
+
+def density_map(x, y, N, xmin=None, xmax=None, ymin=None, ymax=None):
+    # Peform the kernel density estimate
+    if xmin is None:
+        xmin = amin(x)
+    if xmax is None:
+        xmax = amax(x)
+    if ymin is None:
+        ymin = amin(y)
+    if ymax is None:
+        ymax = amax(y)
+    xx, yy = mgrid[xmin:xmax:N*1j, ymin:ymax:N*1j]
+    positions = vstack([xx.ravel(), yy.ravel()])
+    values = vstack([x, y])
+    kernel = stats.gaussian_kde(values)
+    f = np.reshape(kernel(positions).T, xx.shape)
+    extent = (xmin, xmax, ymin, ymax)
+    return f.T, extent
+
+def plot_density_map(x, y, N, xmin=None, xmax=None, ymin=None, ymax=None, **args):
+    img, extent = density_map(x, y, N, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax)
+    imshow(img, origin='lower left', aspect='auto', interpolation='nearest',
+           extent=extent,
+           vmin=0, vmax=amax(img),#/0.7,
+           **args
+           )
+
+# Take a series of x, y points and plot a density map using kernel density estimation
+# N is the grid size for the density image. For the independent density map it shows
+# the ratio of the density of the joint density to what you'd expect if the variables
+# were independent
+
+def independent_density_map(x, y, N, xmin=None, xmax=None, ymin=None, ymax=None):
+    # Peform the kernel density estimate
+    if xmin is None:
+        xmin = amin(x)
+    if xmax is None:
+        xmax = amax(x)
+    if ymin is None:
+        ymin = amin(y)
+    if ymax is None:
+        ymax = amax(y)
+    xx, yy = mgrid[xmin:xmax:N*1j, ymin:ymax:N*1j]
+    xxx = linspace(xmin, xmax, N)
+    yyy = linspace(ymin, ymax, N)
+    positions = vstack([xx.ravel(), yy.ravel()])
+    values = vstack([x, y])
+    kernel = stats.gaussian_kde(values)
+    kernelx = stats.gaussian_kde(x)
+    kernely = stats.gaussian_kde(y)
+    f = log(np.reshape(kernel(positions).T, xx.shape)/(kernelx(xxx)[newaxis, :]*kernely(yyy)[:, newaxis]))
+    extent = (xmin, xmax, ymin, ymax)
+    return f.T, extent
+
+def plot_independent_density_map(x, y, N, xmin=None, xmax=None, ymin=None, ymax=None, **args):
+    img, extent = independent_density_map(x, y, N, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax)
+    imshow(img, origin='lower left', aspect='auto', interpolation='nearest',
+           extent=extent, cmap=cm.coolwarm,
+           vmin=-2, vmax=2,
+           **args
+           )
+    
 def look_for_correlations(N, search_params,
                           weighted=False, error_func_name="Max error",
-                          max_error=30,
+                          max_error=30, plotmode='scatter',
                          ):
+    if plotmode=='density':
+        density_plotter = plot_density_map
+    elif plotmode=='independent_density':
+        plotmode = 'density'
+        density_plotter = plot_independent_density_map
     # always use the same random seed for cacheing
     seed(34032483)
     # Get simple parameters
@@ -207,7 +278,12 @@ def look_for_correlations(N, search_params,
     res = simple_model(N, search_params, use_standalone_openmp=True)
     res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
     mse = res.mse
+    meanvs = mean(res.raw_measures['vs'], axis=1)
     good_indices = mse<max_error*pi/180
+    regions = [('All', good_indices, 'blue')]
+#     regions = [('Low VS', good_indices & (meanvs < 0.75), 'red'),
+#                ('High VS', good_indices & (meanvs >= 0.75), 'blue'),
+#               ]
     # plot a histogram to check we're good
     figure(figsize=(8, 8), dpi=85)
     nparam = len(res.raw.params)
@@ -219,10 +295,19 @@ def look_for_correlations(N, search_params,
             py = res.raw.params.keys()[j]
             vx = res.raw.params[px]
             vy = res.raw.params[py]
-            vx = vx[good_indices]
-            vy = vy[good_indices]
             subplot(gs[j-1, i])
-            plot(vx, vy, ',')
+            for condname, cond, condcol in regions:
+                rvx = vx[cond]
+                rvy = vy[cond]
+                if plotmode=='scatter':
+                    plot(rvx, rvy, ',', c=condcol)
+                elif plotmode=='density':
+                    density_plotter(rvx, rvy, 40,
+                                    xmin=search_params[px][0],
+                                    xmax=search_params[px][1],
+                                    ymin=search_params[py][0],
+                                    ymax=search_params[py][1],
+                                    )
             xlim(*search_params[px])
             ylim(*search_params[py])
             if j==nparam-1:
@@ -243,4 +328,5 @@ def look_for_correlations(N, search_params,
                 yticks([])
     tight_layout()
 
-look_for_correlations(N=50000, search_params=search_params)
+for plotmode in ['scatter', 'density', 'independent_density']:
+    look_for_correlations(N=50000, search_params=search_params, plotmode=plotmode)
