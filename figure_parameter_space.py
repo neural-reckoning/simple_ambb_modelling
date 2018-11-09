@@ -1,8 +1,13 @@
 # ---
 # jupyter:
 #   hide_input: false
-#   jupytext_format_version: '1.3'
-#   jupytext_formats: ipynb,py:light
+#   jupytext:
+#     formats: ipynb,py:light
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.3'
+#       jupytext_version: 0.8.1
 #   kernelspec:
 #     display_name: Python 2
 #     language: python
@@ -33,6 +38,7 @@ from scipy.ndimage.filters import gaussian_filter, median_filter
 from simple_model import *
 from model_explorer_jupyter import meshed_arguments
 import itertools
+import numba
 
 def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
@@ -122,7 +128,7 @@ def parameter_space(N, M_popmap, num_params,
     # Get simple parameters
     error_func = error_functions[error_func_name]
     # Run the model
-    res = simple_model(N, search_params, use_standalone_openmp=True)
+    res = simple_model(N, search_params, use_standalone_openmp=True, update_progress='text')
     res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=interpolate_bmf)
     mse = res.mse
     peak_phase = res.peak_phase
@@ -178,8 +184,8 @@ def parameter_space(N, M_popmap, num_params,
 
         
 # N = 1000; M_popmap=10; num_params=20 # quick, low quality
-#N = 10000; M_popmap=20; num_params=100 # medium quality
-N = 10000; M_popmap=80; num_params=500 # high quality (will take many hours to run)
+N = 10000; M_popmap=20; num_params=100 # medium quality
+#N = 10000; M_popmap=80; num_params=500 # high quality (will take many hours to run)
 
 search_params = dict(
     taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
@@ -265,17 +271,23 @@ def look_for_correlations(N, search_params,
                           weighted=False, error_func_name="Max error",
                           max_error=30, plotmode='scatter',
                          ):
+    figtitle = plotmode
     if plotmode=='density':
         density_plotter = plot_density_map
     elif plotmode=='independent_density':
         plotmode = 'density'
         density_plotter = plot_independent_density_map
+    elif plotmode=='error':
+        # aim for at least 100 params per pixel, but only need 40x40 max pixels
+        N_img = min(int(sqrt(N/100.)), 40)
+        print 'Image dimension {N_img}x{N_img}, approximately {samp} samples per pixel'.format(
+                    N_img=N_img, samp=int(N/N_img**2))
     # always use the same random seed for cacheing
     seed(34032483)
     # Get simple parameters
     error_func = error_functions[error_func_name]
     # Run the model
-    res = simple_model(N, search_params, use_standalone_openmp=True)
+    res = simple_model(N, search_params, use_standalone_openmp=True, update_progress='text')
     res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
     mse = res.mse
     meanvs = mean(res.raw_measures['vs'], axis=1)
@@ -286,28 +298,61 @@ def look_for_correlations(N, search_params,
 #               ]
     # plot a histogram to check we're good
     figure(figsize=(8, 8), dpi=85)
+    suptitle(figtitle)
     nparam = len(res.raw.params)
     gs = GridSpec(nparam-1, nparam-1, wspace=0, hspace=0)
-    #for (px, vx), (py, vy) in itertools.combinations(res.raw.params.items(), 2):
     for i in xrange(nparam):
         for j in xrange(i+1, nparam):
             px = res.raw.params.keys()[i]
             py = res.raw.params.keys()[j]
             vx = res.raw.params[px]
             vy = res.raw.params[py]
+            xmin, xmax = search_params[px]
+            ymin, ymax = search_params[py]
             subplot(gs[j-1, i])
-            for condname, cond, condcol in regions:
-                rvx = vx[cond]
-                rvy = vy[cond]
-                if plotmode=='scatter':
-                    plot(rvx, rvy, ',', c=condcol)
-                elif plotmode=='density':
-                    density_plotter(rvx, rvy, 40,
-                                    xmin=search_params[px][0],
-                                    xmax=search_params[px][1],
-                                    ymin=search_params[py][0],
-                                    ymax=search_params[py][1],
-                                    )
+            if plotmode=='error':
+                error = 2*pi*ones((N_img, N_img))
+                @numba.jit(nopython=True)
+                def find_best_error(error, vx, vy, mse, xmin, xmax, ymin, ymax):
+                    N = error.shape[0]
+                    wx = float(xmax-xmin)/N
+                    wy = float(ymax-ymin)/N
+                    for k in range(mse.shape[0]):
+                        x = vx[k]
+                        y = vy[k]
+                        i = int((x-xmin)/wx)
+                        j = int((y-ymin)/wy)
+                        if mse[k]<error[i, j]:
+                            error[i, j] = mse[k]
+                find_best_error(error, vx, vy, mse, xmin, xmax, ymin, ymax)
+                error = error.T*180/pi
+                error = median_filter(error, size=5, mode='nearest')
+                error_blur = gaussian_filter(error, 3, mode='nearest')
+                imshow(error, extent=(xmin, xmax, ymin, ymax),
+                       origin='lower left', aspect='auto', interpolation='nearest',
+                       vmin=0, vmax=120, cmap=cm.viridis)
+                cs = contour(error_blur, origin='lower',
+                             levels=[15, 30, 45], colors='w',
+                             extent=(xmin, xmax, ymin, ymax))
+                # this weird hack works around a bug in contour
+                for level, linecol in zip(cs.levels, cs.collections):
+                    if level==15:
+                        linecol.set_linestyle('solid')
+                    if level==30:
+                        linecol.set_linestyle('dashed')
+                    if level==45:
+                        linecol.set_linestyle('dotted')
+            else:
+                for condname, cond, condcol in regions:
+                    rvx = vx[cond]
+                    rvy = vy[cond]
+                    if plotmode=='scatter':
+                        plot(rvx, rvy, ',', c=condcol)
+                    elif plotmode=='density':
+                        density_plotter(rvx, rvy, 40,
+                                        xmin=xmin, ymin=ymin,
+                                        xmax=xmax, ymax=ymax,
+                                        )
             xlim(*search_params[px])
             ylim(*search_params[py])
             if j==nparam-1:
@@ -328,5 +373,7 @@ def look_for_correlations(N, search_params,
                 yticks([])
     tight_layout()
 
-for plotmode in ['scatter', 'density', 'independent_density']:
+#for plotmode in ['error', 'scatter', 'density', 'independent_density']:
+for plotmode in ['error']:
     look_for_correlations(N=50000, search_params=search_params, plotmode=plotmode)
+    #look_for_correlations(N=800000, search_params=search_params, plotmode=plotmode)
