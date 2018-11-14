@@ -75,132 +75,6 @@ latex_parameter_names = dict(
 # Run analysis and plot figure
 
 # +
-population_summary_methods = {
-    'Mean': mean,
-    'Best': amin,
-    }
-
-def popmap(M, num_params, weighted, error_func_name,
-           pop_summary_name='Best', **kwds):
-    global curfig
-    # always use the same random seed for cacheing
-    seed(34032483)    
-    # Set up ranges of variables, and generate arguments to pass to model function
-    vx, vy = selected_axes = ('alpha', 'beta')
-    pop_summary = population_summary_methods[pop_summary_name]
-    error_func = error_functions[error_func_name]
-    axis_ranges = dict((k, linspace(*(v+(M,)))) for k, v in kwds.items() if k in selected_axes)
-    axis_ranges['temp'] = zeros(num_params)
-    array_kwds = meshed_arguments(selected_axes+('temp',), kwds, axis_ranges)
-    del array_kwds['temp']
-    # Run the model
-    res = simple_model(M*M*num_params, array_kwds, use_standalone_openmp=True)
-    res = simple_model_results(M*M*num_params, res, error_func, weighted, shape=(M, M, num_params))
-    mse = res.mse
-    # Analyse the data
-    mse = mse*180/pi
-    mse_summary = pop_summary(mse, axis=2)
-    # Plot the data
-    extent = (kwds[vx]+kwds[vy])    
-    mse_summary = median_filter(mse_summary, mode='nearest', size=5)
-    mse_summary_blur = gaussian_filter(mse_summary, 3, mode='nearest')
-    imshow(mse_summary, origin='lower left', aspect='auto',
-           interpolation='nearest', vmin=0, extent=extent)
-    title('Best fits close to overall best fit')
-    xlabel(r'Adaptation strength $\alpha$')
-    ylabel(r'Onset strength $\beta$')
-    cb = colorbar()
-    cb.set_label(error_func_name, rotation=270, labelpad=20)
-    cs = contour(mse_summary_blur, origin='lower',
-                 levels=[15, 30, 45], colors='w',
-                 extent=extent)
-    clabel(cs, colors='w', inline=True, fmt='%d')
-    
-
-def parameter_space(N, M_popmap, num_params,
-                    weighted, error_func_name, error_cutoffs,
-                    search_params,
-                    N_show, transp,
-                    interpolate_bmf=True,
-                    ):
-    # always use the same random seed for cacheing
-    seed(34032483)
-    # Get simple parameters
-    error_func = error_functions[error_func_name]
-    # Run the model
-    res = simple_model(N, search_params, use_standalone_openmp=True, update_progress='text')
-    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=interpolate_bmf)
-    mse = res.mse
-    peak_phase = res.peak_phase
-    norm_peak_fr = res.norm_measures['peak']
-    # Properties of lowest MSE value
-    idx_best = argmin(mse)
-    best_peak_phase = peak_phase[idx_best, :]
-    best_norm_peak_fr = norm_peak_fr[idx_best, :]
-    bestvals = []
-    for k in search_params.keys():
-        v = res.raw.params[k][idx_best]
-        bestvals.append('%s=%.2f' % (k, v))
-    print 'Best: ' + ', '.join(bestvals)
-    
-    ############# Plot the data
-    curfig = figure(dpi=65, figsize=(8, 3.5))
-    
-    # We only want to show N_show good peak phase curves, so we apply some criteria
-    idx_keep = amax(peak_phase, axis=1)>1*pi/180
-    idx_keep = idx_keep & (amin(peak_phase, axis=1)>0)
-    idx_keep = idx_keep & (amin(peak_phase, axis=1)<=pi)
-    idx_keep = idx_keep & (amax(abs(diff(peak_phase, axis=1)), axis=1)<pi/2)
-    idx_keep, = idx_keep.nonzero()
-    idx_keep = idx_keep[:N_show]
-    # Plot the extracted phase curves
-    subplot(121)
-    plot(dietz_fm/Hz, peak_phase[idx_keep, :].T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
-    plot(dietz_fm/Hz, best_peak_phase*180/pi, '-ko', lw=2, label='Model (best)')
-    errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data')
-    handles, labels = gca().get_legend_handles_labels()
-    lab2hand = OrderedDict()
-    for h, l in zip(handles, labels):
-        lab2hand[l] = h
-    legend(lab2hand.values(), lab2hand.keys(), loc='upper left')
-    grid()
-    ylim(0, 180)
-    xticks(dietz_fm/Hz)
-    xlabel('Modulation frequency (Hz)')
-    ylabel('Extracted phase (deg)')
-    # Plot the best fits
-    subplot(122)
-    popmap(M=M_popmap, num_params=num_params,
-           weighted=weighted, error_func_name=error_func_name,
-           **search_params)
-    title('Best fits')
-    
-    tight_layout()
-
-    # Label panels
-    for i, c in enumerate('AB'):
-        text(0.48*i, .92, c,
-             transform=gcf().transFigure, fontsize=16)
-
-        
-# N = 1000; M_popmap=10; num_params=20 # quick, low quality
-N = 10000; M_popmap=20; num_params=100 # medium quality
-#N = 10000; M_popmap=80; num_params=500 # high quality (will take many hours to run)
-
-search_params = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
-    level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
-    gamma=(0.1, 1))
-
-parameter_space(N=N, M_popmap=M_popmap, num_params=num_params,
-                weighted=False, error_func_name="Max error",
-                error_cutoffs=[15, 30, 45],
-                N_show=1000, transp=0.1,
-                search_params=search_params,
-               )
-savefig('figure_parameter_space.pdf')
-
-# +
 from scipy import stats
 
 # # Take a series of x, y points and plot a density map using kernel density estimation
@@ -267,10 +141,10 @@ def plot_independent_density_map(x, y, N, xmin=None, xmax=None, ymin=None, ymax=
            **args
            )
     
-def look_for_correlations(N, search_params,
-                          weighted=False, error_func_name="Max error",
-                          max_error=30, plotmode='scatter',
-                         ):
+def parameter_space(N, search_params, N_show=1000, transp=0.1,
+                    weighted=False, error_func_name="Max error",
+                    max_error=30, plotmode='scatter',
+                    ):
     figtitle = plotmode
     if plotmode=='density':
         density_plotter = plot_density_map
@@ -293,14 +167,12 @@ def look_for_correlations(N, search_params,
     meanvs = mean(res.raw_measures['vs'], axis=1)
     good_indices = mse<max_error*pi/180
     regions = [('All', good_indices, 'blue')]
-#     regions = [('Low VS', good_indices & (meanvs < 0.75), 'red'),
-#                ('High VS', good_indices & (meanvs >= 0.75), 'blue'),
-#               ]
-    # plot a histogram to check we're good
-    figure(figsize=(8, 8), dpi=85)
-    suptitle(figtitle)
+    # Plot parameter pairs
+    figure(figsize=(8, 8.5), dpi=85)
+    #suptitle(figtitle)
     nparam = len(res.raw.params)
     gs = GridSpec(nparam-1, nparam-1, wspace=0, hspace=0)
+    image_axes = []
     for i in xrange(nparam):
         for j in xrange(i+1, nparam):
             px = res.raw.params.keys()[i]
@@ -309,7 +181,7 @@ def look_for_correlations(N, search_params,
             vy = res.raw.params[py]
             xmin, xmax = search_params[px]
             ymin, ymax = search_params[py]
-            subplot(gs[j-1, i])
+            image_axes.append(subplot(gs[j-1, i]))
             if plotmode=='error':
                 error = 2*pi*ones((N_img, N_img))
                 @numba.jit(nopython=True)
@@ -328,7 +200,7 @@ def look_for_correlations(N, search_params,
                 error = error.T*180/pi
                 error = median_filter(error, size=5, mode='nearest')
                 error_blur = gaussian_filter(error, 3, mode='nearest')
-                imshow(error, extent=(xmin, xmax, ymin, ymax),
+                img_obj = imshow(error, extent=(xmin, xmax, ymin, ymax),
                        origin='lower left', aspect='auto', interpolation='nearest',
                        vmin=0, vmax=120, cmap=cm.viridis)
                 cs = contour(error_blur, origin='lower',
@@ -357,23 +229,76 @@ def look_for_correlations(N, search_params,
             ylim(*search_params[py])
             if j==nparam-1:
                 xlabel(latex_parameter_names[px])
-                xticks(search_params[px])
+                xticks(search_params[px], ['%.2f' % paramval for paramval in search_params[px]])
                 ticklabels = gca().get_xticklabels()
                 ticklabels[0].set_ha('left')
+                ticklabels[0].set_text(' '+ticklabels[0].get_text())
                 ticklabels[-1].set_ha('right')
+                ticklabels[-1].set_text(ticklabels[-1].get_text()+' ')
+                #print ticklabels[0]
+                #print ticklabels
+                gca().set_xticklabels(ticklabels)
             else:
                 xticks([])
             if i==0:
-                ylabel(latex_parameter_names[py])
-                yticks(search_params[py])
+                yticks(search_params[py], ['%.2f' % paramval for paramval in search_params[py]])
                 ticklabels = gca().get_yticklabels()
                 ticklabels[0].set_va('bottom')
                 ticklabels[-1].set_va('top')
+                ylabel(latex_parameter_names[py])
+                gca().get_yaxis().set_label_coords(-0.2,0.5)
             else:
                 yticks([])
-    tight_layout()
+    
+    # Plot some sample extracted phase curves
+    peak_phase = res.peak_phase
+    # Properties of lowest MSE value
+    idx_best = argmin(mse)
+    best_peak_phase = peak_phase[idx_best, :]
+    bestvals = []
+    for k in search_params.keys():
+        v = res.raw.params[k][idx_best]
+        bestvals.append('%s=%.2f' % (k, v))
+    print 'Best: ' + ', '.join(bestvals)
+    # We only want to show N_show good peak phase curves, so we apply some criteria
+    idx_keep = amax(peak_phase, axis=1)>1*pi/180
+    idx_keep = idx_keep & (amin(peak_phase, axis=1)>0)
+    idx_keep = idx_keep & (amin(peak_phase, axis=1)<=pi)
+    idx_keep = idx_keep & (amax(abs(diff(peak_phase, axis=1)), axis=1)<pi/2)
+    idx_keep, = idx_keep.nonzero()
+    idx_keep = idx_keep[:N_show]
+    # Plot the extracted phase curves
+    subplot(gs[0:2, nparam-3:nparam-1])
+    plot(dietz_fm/Hz, peak_phase[idx_keep, :].T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
+    plot(dietz_fm/Hz, best_peak_phase*180/pi, '-ko', lw=2, label='Model (best)')
+    errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data')
+    handles, labels = gca().get_legend_handles_labels()
+    lab2hand = OrderedDict()
+    for h, l in zip(handles, labels):
+        lab2hand[l] = h
+    legend(lab2hand.values(), lab2hand.keys(), loc='upper left')
+    grid()
+    ylim(0, 180)
+    yticks([0, 45, 90, 135, 180])
+    xticks(dietz_fm/Hz)
+    xlabel('Modulation frequency (Hz)')
+    ylabel('Extracted phase (deg)')
+        
+    subplots_adjust(left=0.12, right=0.98, bottom=0.05, top=0.98)
+    
+    cb = colorbar(img_obj, ax=gcf().axes, use_gridspec=True,
+             ticks=range(0, 121, 15),
+             orientation='horizontal',
+             fraction=0.04, pad=0.08, aspect=40,
+            )
+    cb.set_label(error_func_name)#, rotation=270, labelpad=20)
+    
+    for c, xpos in [('A', 0.02), ('B', 0.55)]:
+        text(xpos, 0.98, c, fontsize=18, transform=gcf().transFigure,
+             horizontalalignment='left', verticalalignment='top')
 
 #for plotmode in ['error', 'scatter', 'density', 'independent_density']:
-for plotmode in ['error']:
-    look_for_correlations(N=50000, search_params=search_params, plotmode=plotmode)
-    #look_for_correlations(N=800000, search_params=search_params, plotmode=plotmode)
+parameter_space(N=50000, search_params=search_params, plotmode='error')
+#parameter_space(N=800000, search_params=search_params, plotmode='error')
+
+savefig('figure_parameter_space.pdf')
