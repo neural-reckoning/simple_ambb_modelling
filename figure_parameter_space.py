@@ -8,6 +8,8 @@
 #       format_name: light
 #       format_version: '1.3'
 #       jupytext_version: 0.8.1
+#   jupytext_format_version: '1.3'
+#   jupytext_formats: py:light
 #   kernelspec:
 #     display_name: Python 2
 #     language: python
@@ -144,6 +146,7 @@ def plot_independent_density_map(x, y, N, xmin=None, xmax=None, ymin=None, ymax=
 def parameter_space(N, search_params, N_show=1000, transp=0.1,
                     weighted=False, error_func_name="Max error",
                     max_error=30, plotmode='scatter',
+                    error_upper_cutoff=90,
                     ):
     figtitle = plotmode
     if plotmode=='density':
@@ -202,7 +205,7 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
                 error_blur = gaussian_filter(error, 3, mode='nearest')
                 img_obj = imshow(error, extent=(xmin, xmax, ymin, ymax),
                        origin='lower left', aspect='auto', interpolation='nearest',
-                       vmin=0, vmax=120, cmap=cm.viridis)
+                       vmin=0, vmax=error_upper_cutoff, cmap=cm.viridis)
                 cs = contour(error_blur, origin='lower',
                              levels=[15, 30, 45], colors='w',
                              extent=(xmin, xmax, ymin, ymax))
@@ -297,8 +300,14 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
         text(xpos, 0.98, c, fontsize=18, transform=gcf().transFigure,
              horizontalalignment='left', verticalalignment='top')
 
+        
+search_params = dict(
+    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
+    level=(-25, 25), alpha=(0, 0.99), beta=(0, 2),
+    gamma=(0.1, 1))
+
 #for plotmode in ['error', 'scatter', 'density', 'independent_density']:
-parameter_space(N=50000, search_params=search_params, plotmode='error')
-#parameter_space(N=800000, search_params=search_params, plotmode='error')
+#parameter_space(N=50000, search_params=search_params, plotmode='error')
+parameter_space(N=800000, search_params=search_params, plotmode='error')
 
 savefig('figure_parameter_space.pdf')
