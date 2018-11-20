@@ -148,6 +148,8 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
                     max_error=30, plotmode='scatter',
                     error_upper_cutoff=90,
                     ):
+    search_params_all = search_params
+    search_params = dict((k, v) for k, v in search_params.items() if isinstance(v, tuple))
     figtitle = plotmode
     if plotmode=='density':
         density_plotter = plot_density_map
@@ -164,7 +166,7 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
     # Get simple parameters
     error_func = error_functions[error_func_name]
     # Run the model
-    res = simple_model(N, search_params, use_standalone_openmp=True, update_progress='text')
+    res = simple_model(N, search_params_all, use_standalone_openmp=True, update_progress='text')
     res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
     mse = res.mse
     meanvs = mean(res.raw_measures['vs'], axis=1)
@@ -173,13 +175,13 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
     # Plot parameter pairs
     figure(figsize=(8, 8.5), dpi=85)
     #suptitle(figtitle)
-    nparam = len(res.raw.params)
+    nparam = len(search_params)
     gs = GridSpec(nparam-1, nparam-1, wspace=0, hspace=0)
     image_axes = []
     for i in xrange(nparam):
         for j in xrange(i+1, nparam):
-            px = res.raw.params.keys()[i]
-            py = res.raw.params.keys()[j]
+            px = search_params.keys()[i]
+            py = search_params.keys()[j]
             vx = res.raw.params[px]
             vy = res.raw.params[py]
             xmin, xmax = search_params[px]
@@ -311,3 +313,15 @@ search_params = dict(
 parameter_space(N=800000, search_params=search_params, plotmode='error')
 
 savefig('figure_parameter_space.pdf')
+# -
+
+# Figure below shows it doesn't change much if you fix level and compression. Should we use this for paper instead?
+
+# +
+search_params_restrict = dict(
+    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
+    level=0, alpha=(0, 0.99), beta=(0, 2),
+    gamma=1)
+
+#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error')
+parameter_space(N=800000, search_params=search_params_restrict, plotmode='error')
