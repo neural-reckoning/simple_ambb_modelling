@@ -342,8 +342,8 @@ search_params_restrict = dict(
     level=0, alpha=(0, 0.99), beta=0,
     gamma=1)
 
-parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
 # -
 
 # Inhibition only
@@ -354,8 +354,8 @@ search_params_restrict = dict(
     level=0, alpha=0, beta=(0, 2),
     gamma=1)
 
-parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
 # -
 
 # Onset only
@@ -366,8 +366,8 @@ search_params_restrict = dict(
     level=0, alpha=0, beta=1,
     gamma=1)
 
-parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
 # -
 
 # Onset cell with adaptation
@@ -378,5 +378,5 @@ search_params_restrict = dict(
     level=0, alpha=(0, 0.99), beta=1,
     gamma=1)
 
-parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
