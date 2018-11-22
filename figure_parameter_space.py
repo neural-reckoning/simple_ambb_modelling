@@ -338,7 +338,7 @@ parameter_space(N=800000, search_params=search_params_restrict, plotmode='error'
 
 # +
 search_params_restrict = dict(
-    taui_ms=1, taue_ms=(0.1, 3), taua_ms=(0.1, 10),
+    taui_ms=1, taue_ms=(0.1, 10), taua_ms=(0.1, 10),
     level=0, alpha=(0, 0.99), beta=0,
     gamma=1)
 
@@ -350,7 +350,7 @@ parameter_space(N=50000, search_params=search_params_restrict, plotmode='error',
 
 # +
 search_params_restrict = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 3), taua_ms=1,
+    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=1,
     level=0, alpha=0, beta=(0, 2),
     gamma=1)
 
@@ -362,7 +362,7 @@ parameter_space(N=50000, search_params=search_params_restrict, plotmode='error',
 
 # +
 search_params_restrict = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 3), taua_ms=1,
+    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=1,
     level=0, alpha=0, beta=1,
     gamma=1)
 
@@ -374,12 +374,9 @@ parameter_space(N=50000, search_params=search_params_restrict, plotmode='error',
 
 # +
 search_params_restrict = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 3), taua_ms=(0.1, 10),
+    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
     level=0, alpha=(0, 0.99), beta=1,
     gamma=1)
 
 parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
 #parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-# -
-
-
