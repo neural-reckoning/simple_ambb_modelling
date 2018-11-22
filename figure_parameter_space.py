@@ -147,6 +147,7 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
                     weighted=False, error_func_name="Max error",
                     max_error=30, plotmode='scatter',
                     error_upper_cutoff=90,
+                    show_samples=True,
                     ):
     search_params_all = search_params
     search_params = dict((k, v) for k, v in search_params.items() if isinstance(v, tuple))
@@ -173,7 +174,7 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
     good_indices = mse<max_error*pi/180
     regions = [('All', good_indices, 'blue')]
     # Plot parameter pairs
-    figure(figsize=(8, 8.5), dpi=85)
+    mainfig = figure(figsize=(8, 8.5), dpi=85)
     #suptitle(figtitle)
     nparam = len(search_params)
     gs = GridSpec(nparam-1, nparam-1, wspace=0, hspace=0)
@@ -264,7 +265,13 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
     for k in search_params.keys():
         v = res.raw.params[k][idx_best]
         bestvals.append('%s=%.2f' % (k, v))
-    print 'Best: ' + ', '.join(bestvals)
+    print ('Best: %.1f deg at '%(mse[idx_best]*180/pi)) + ', '.join(bestvals)
+    
+    if show_samples:
+        subplot(gs[0:2, nparam-3:nparam-1])
+    else:
+        figure(figsize=(5, 5))
+
     # We only want to show N_show good peak phase curves, so we apply some criteria
     idx_keep = amax(peak_phase, axis=1)>1*pi/180
     idx_keep = idx_keep & (amin(peak_phase, axis=1)>0)
@@ -273,7 +280,6 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
     idx_keep, = idx_keep.nonzero()
     idx_keep = idx_keep[:N_show]
     # Plot the extracted phase curves
-    subplot(gs[0:2, nparam-3:nparam-1])
     plot(dietz_fm/Hz, peak_phase[idx_keep, :].T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
     plot(dietz_fm/Hz, best_peak_phase*180/pi, '-ko', lw=2, label='Model (best)')
     errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data')
@@ -289,18 +295,19 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
     xlabel('Modulation frequency (Hz)')
     ylabel('Extracted phase (deg)')
         
-    subplots_adjust(left=0.12, right=0.98, bottom=0.05, top=0.98)
+    mainfig.subplots_adjust(left=0.12, right=0.98, bottom=0.05, top=0.98)
     
-    cb = colorbar(img_obj, ax=gcf().axes, use_gridspec=True,
+    cb = mainfig.colorbar(img_obj, ax=gcf().axes, use_gridspec=True,
              ticks=range(0, 121, 15),
              orientation='horizontal',
              fraction=0.04, pad=0.08, aspect=40,
             )
     cb.set_label(error_func_name)#, rotation=270, labelpad=20)
     
-    for c, xpos in [('A', 0.02), ('B', 0.55)]:
-        text(xpos, 0.98, c, fontsize=18, transform=gcf().transFigure,
-             horizontalalignment='left', verticalalignment='top')
+    if show_samples:
+        for c, xpos in [('A', 0.02), ('B', 0.55)]:
+            text(xpos, 0.98, c, fontsize=18, transform=gcf().transFigure,
+                 horizontalalignment='left', verticalalignment='top')
 
         
 search_params = dict(
@@ -323,5 +330,56 @@ search_params_restrict = dict(
     level=0, alpha=(0, 0.99), beta=(0, 2),
     gamma=1)
 
-#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error')
-parameter_space(N=800000, search_params=search_params_restrict, plotmode='error')
+#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+# -
+
+# Adaptation only
+
+# +
+search_params_restrict = dict(
+    taui_ms=1, taue_ms=(0.1, 3), taua_ms=(0.1, 10),
+    level=0, alpha=(0, 0.99), beta=0,
+    gamma=1)
+
+parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+# -
+
+# Inhibition only
+
+# +
+search_params_restrict = dict(
+    taui_ms=(0.1, 10), taue_ms=(0.1, 3), taua_ms=1,
+    level=0, alpha=0, beta=(0, 2),
+    gamma=1)
+
+parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+# -
+
+# Onset only
+
+# +
+search_params_restrict = dict(
+    taui_ms=(0.1, 10), taue_ms=(0.1, 3), taua_ms=1,
+    level=0, alpha=0, beta=1,
+    gamma=1)
+
+parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+# -
+
+# Onset cell with adaptation
+
+# +
+search_params_restrict = dict(
+    taui_ms=(0.1, 10), taue_ms=(0.1, 3), taua_ms=(0.1, 10),
+    level=0, alpha=(0, 0.99), beta=1,
+    gamma=1)
+
+parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+#parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+# -
+
+
