@@ -1,6 +1,6 @@
 # ---
 # jupyter:
-#   hide_input: false
+#   hide_input: true
 #   jupytext:
 #     formats: ipynb,py:light
 #     text_representation:
@@ -273,14 +273,21 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
         figure(figsize=(5, 5))
 
     # We only want to show N_show good peak phase curves, so we apply some criteria
-    idx_keep = amax(peak_phase, axis=1)>1*pi/180
-    idx_keep = idx_keep & (amin(peak_phase, axis=1)>0)
-    idx_keep = idx_keep & (amin(peak_phase, axis=1)<=pi)
-    idx_keep = idx_keep & (amax(abs(diff(peak_phase, axis=1)), axis=1)<pi/2)
-    idx_keep, = idx_keep.nonzero()
+    #idx_keep = amax(peak_phase, axis=1)>1*pi/180
+    #idx_keep = idx_keep & (amin(peak_phase, axis=1)>0)
+    #idx_keep = idx_keep & (amin(peak_phase, axis=1)<=pi)
+    #idx_keep = idx_keep & (amax(abs(diff(peak_phase, axis=1)), axis=1)<pi/2)
+    idx_keep = amin(peak_phase, axis=1)>0
+    print "Fraction of curves nonzero %.1f%%" % (100.0*sum(idx_keep)/N)
     idx_keep = idx_keep[:N_show]
+    idx_keep, = idx_keep.nonzero()
     # Plot the extracted phase curves
-    plot(dietz_fm/Hz, peak_phase[idx_keep, :].T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
+    unrolled = peak_phase[idx_keep, 0][:, newaxis]+cumsum(hstack((zeros((len(idx_keep), 1)), log(exp(1j*diff(peak_phase[idx_keep, :], axis=1))).imag)), axis=1)
+    print "Fraction monotonically increasing %.1f%%" % (sum((diff(unrolled, axis=1)>0).all(axis=1))*100.0/len(idx_keep))
+    #plot(dietz_fm/Hz, peak_phase[idx_keep, :].T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
+    plot(dietz_fm/Hz, unrolled.T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
+    plot(dietz_fm/Hz, unrolled.T*180/pi+360, '-', color=(0.4, 0.7, 0.4, transp))
+    plot(dietz_fm/Hz, unrolled.T*180/pi-360, '-', color=(0.4, 0.7, 0.4, transp))
     plot(dietz_fm/Hz, best_peak_phase*180/pi, '-ko', lw=2, label='Model (best)')
     errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data')
     handles, labels = gca().get_legend_handles_labels()
@@ -289,15 +296,15 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
         lab2hand[l] = h
     legend(lab2hand.values(), lab2hand.keys(), loc='upper left')
     grid()
-    ylim(0, 180)
-    yticks([0, 45, 90, 135, 180])
+    ylim(0, 360)
+    yticks([0, 90, 180, 270, 360])
     xticks(dietz_fm/Hz)
     xlabel('Modulation frequency (Hz)')
     ylabel('Extracted phase (deg)')
         
     mainfig.subplots_adjust(left=0.12, right=0.98, bottom=0.05, top=0.98)
     
-    cb = mainfig.colorbar(img_obj, ax=gcf().axes, use_gridspec=True,
+    cb = mainfig.colorbar(img_obj, ax=mainfig.axes, use_gridspec=True,
              ticks=range(0, 121, 15),
              orientation='horizontal',
              fraction=0.04, pad=0.08, aspect=40,
