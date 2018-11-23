@@ -1,6 +1,6 @@
 # ---
 # jupyter:
-#   hide_input: true
+#   hide_input: false
 #   jupytext:
 #     formats: ipynb,py:light
 #     text_representation:
@@ -148,6 +148,7 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
                     max_error=30, plotmode='scatter',
                     error_upper_cutoff=90,
                     show_samples=True,
+                    subdivide_for_std_calc=10,
                     ):
     search_params_all = search_params
     search_params = dict((k, v) for k, v in search_params.items() if isinstance(v, tuple))
@@ -259,13 +260,18 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
     # Plot some sample extracted phase curves
     peak_phase = res.peak_phase
     # Properties of lowest MSE value
+    # std of best mse by subdividing data
+    bests = []
+    for i in range(subdivide_for_std_calc):
+        bests.append(amin(mse[N/subdivide_for_std_calc*i:N/subdivide_for_std_calc*(i+1)]))
+    mse_best_std = std(bests)*180/pi
     idx_best = argmin(mse)
     best_peak_phase = peak_phase[idx_best, :]
     bestvals = []
     for k in search_params.keys():
         v = res.raw.params[k][idx_best]
         bestvals.append('%s=%.2f' % (k, v))
-    print ('Best: %.1f deg at '%(mse[idx_best]*180/pi)) + ', '.join(bestvals)
+    print ('Best: %.1f +/- %.1f deg at '%(mse[idx_best]*180/pi, mse_best_std)) + ', '.join(bestvals)
     
     if show_samples:
         subplot(gs[0:2, nparam-3:nparam-1])
