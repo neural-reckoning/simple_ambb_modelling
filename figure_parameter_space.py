@@ -36,7 +36,7 @@ from scipy.interpolate import interp1d
 from matplotlib import cm
 import joblib
 from scipy.ndimage.interpolation import zoom
-from scipy.ndimage.filters import gaussian_filter, median_filter
+from scipy.ndimage.filters import gaussian_filter, median_filter, minimum_filter
 from simple_model import *
 from model_explorer_jupyter import meshed_arguments
 import itertools
@@ -205,7 +205,8 @@ def parameter_space(N, search_params, N_show=1000, transp=0.1,
                             error[i, j] = mse[k]
                 find_best_error(error, vx, vy, mse, xmin, xmax, ymin, ymax)
                 error = error.T*180/pi
-                error = median_filter(error, size=5, mode='nearest')
+                #error = median_filter(error, size=5, mode='nearest')
+                #error = minimum_filter(error, size=3, mode='nearest')
                 error_blur = gaussian_filter(error, 3, mode='nearest')
                 img_obj = imshow(error, extent=(xmin, xmax, ymin, ymax),
                        origin='lower left', aspect='auto', interpolation='nearest',
@@ -330,7 +331,8 @@ search_params = dict(
 
 #for plotmode in ['error', 'scatter', 'density', 'independent_density']:
 #parameter_space(N=50000, search_params=search_params, plotmode='error')
-parameter_space(N=800000, search_params=search_params, plotmode='error')
+#parameter_space(N=800000, search_params=search_params, plotmode='error')
+parameter_space(N=4000000, search_params=search_params, plotmode='error')
 
 savefig('figure_parameter_space.pdf')
 # -
@@ -393,3 +395,89 @@ search_params_restrict = dict(
 
 #parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
 parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
+
+# +
+def sample_curves(N, search_params,
+                  N_show=1000, transp=0.1, show_legend=False,
+                  weighted=False, error_func_name="Max error",
+                  max_error=30,
+                  ):
+    search_params_all = search_params
+    search_params = dict((k, v) for k, v in search_params.items() if isinstance(v, tuple))
+    # always use the same random seed for cacheing
+    seed(34032483)
+    # Get simple parameters
+    error_func = error_functions[error_func_name]
+    # Run the model
+    res = simple_model(N, search_params_all, use_standalone_openmp=True, update_progress='text')
+    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
+    mse = res.mse
+    meanvs = mean(res.raw_measures['vs'], axis=1)
+    good_indices = mse<max_error*pi/180
+    # Plot some sample extracted phase curves
+    peak_phase = res.peak_phase
+    # Properties of lowest MSE value
+    idx_best = argmin(mse)
+    best_peak_phase = peak_phase[idx_best, :]
+    bestvals = []
+    for k in search_params.keys():
+        v = res.raw.params[k][idx_best]
+        bestvals.append('%s=%.2f' % (k, v))
+    best_deg = mse[idx_best]*180/pi
+    print ('Best: %.1f at ' % best_deg) + ', '.join(bestvals)
+    
+    # We only want to show N_show good peak phase curves, so we apply some criteria
+    idx_keep = amin(peak_phase, axis=1)>0
+    print "Fraction of curves nonzero %.1f%%" % (100.0*sum(idx_keep)/N)
+    idx_keep = idx_keep[:N_show]
+    idx_keep, = idx_keep.nonzero()
+    # Plot the extracted phase curves
+    unrolled = peak_phase[idx_keep, 0][:, newaxis]+cumsum(hstack((zeros((len(idx_keep), 1)), log(exp(1j*diff(peak_phase[idx_keep, :], axis=1))).imag)), axis=1)
+    print "Fraction monotonically increasing %.1f%%" % (sum((diff(unrolled, axis=1)>0).all(axis=1))*100.0/len(idx_keep))
+    plot(dietz_fm/Hz, unrolled.T*180/pi, '-', color=(0.4, 0.7, 0.4, transp), label='Model (all)')
+    plot(dietz_fm/Hz, unrolled.T*180/pi+360, '-', color=(0.4, 0.7, 0.4, transp))
+    plot(dietz_fm/Hz, unrolled.T*180/pi-360, '-', color=(0.4, 0.7, 0.4, transp))
+    plot(dietz_fm/Hz, best_peak_phase*180/pi, '-ko', lw=2, label='Model (best)')
+    errorbar(dietz_fm/Hz, dietz_phase*180/pi, yerr=dietz_phase_std*180/pi, fmt='--r', label='Data')
+    if show_legend:
+        handles, labels = gca().get_legend_handles_labels()
+        lab2hand = OrderedDict()
+        for h, l in zip(handles, labels):
+            lab2hand[l] = h
+        legend(lab2hand.values(), lab2hand.keys(), loc='upper left')
+    grid()
+    ylim(0, 360)
+    yticks([0, 90, 180, 270, 360])
+    xticks(dietz_fm/Hz)
+    xlabel('Modulation frequency (Hz)')
+    ylabel('Extracted phase (deg)')
+    
+    return best_deg
+
+def comparison_figure(N, search_params):
+    comparison_specs = OrderedDict([
+        ('All', dict()),
+        ('Reduced', dict(level=0, gamma=1)),
+        ('Adaptation', dict(level=0, gamma=1, beta=0, taui_ms=1)),
+        ('Onset', dict(level=0, gamma=1, alpha=0, taua_ms=1)),
+        ('Octopus', dict(level=0, gamma=1, beta=1, alpha=0, taua_ms=1)),
+        ('Adapting octopus', dict(level=0, gamma=1, beta=1)),
+        ])
+    figure(figsize=(14, 5), dpi=65)
+    best_deg = OrderedDict()
+    for i, (name, modif) in enumerate(comparison_specs.items()):
+        subplot(2, len(comparison_specs), i+1+len(comparison_specs))
+        cur_search_params = search_params.copy()
+        cur_search_params.update(modif)
+        best_deg[name] = sample_curves(N, cur_search_params)
+        if i:
+            locs, label = yticks()
+            yticks(locs, ['']*len(locs))
+            ylabel('')
+        title(name)
+    subplot(2, 1, 1)
+    bar(range(len(comparison_specs)), best_deg.values(), width=0.1)
+    xticks(range(len(comparison_specs)), best_deg.keys())
+    tight_layout()
+    
+comparison_figure(N=800000, search_params=search_params)
