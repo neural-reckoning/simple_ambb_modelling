@@ -34,6 +34,7 @@ from brian2 import *
 from collections import OrderedDict
 from scipy.interpolate import interp1d
 from matplotlib import cm
+from matplotlib.gridspec import GridSpecFromSubplotSpec
 import joblib
 from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter, median_filter, minimum_filter
@@ -335,66 +336,6 @@ search_params = dict(
 parameter_space(N=4000000, search_params=search_params, plotmode='error')
 
 savefig('figure_parameter_space.pdf')
-# -
-
-# Figure below shows it doesn't change much if you fix level and compression. Should we use this for paper instead?
-
-# +
-search_params_restrict = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
-    level=0, alpha=(0, 0.99), beta=(0, 2),
-    gamma=1)
-
-#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-# -
-
-# Adaptation only
-
-# +
-search_params_restrict = dict(
-    taui_ms=1, taue_ms=(0.1, 10), taua_ms=(0.1, 10),
-    level=0, alpha=(0, 0.99), beta=0,
-    gamma=1)
-
-#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-# -
-
-# Inhibition only
-
-# +
-search_params_restrict = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=1,
-    level=0, alpha=0, beta=(0, 2),
-    gamma=1)
-
-#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-# -
-
-# Onset only
-
-# +
-search_params_restrict = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=1,
-    level=0, alpha=0, beta=1,
-    gamma=1)
-
-#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-# -
-
-# Onset cell with adaptation
-
-# +
-search_params_restrict = dict(
-    taui_ms=(0.1, 10), taue_ms=(0.1, 10), taua_ms=(0.1, 10),
-    level=0, alpha=(0, 0.99), beta=1,
-    gamma=1)
-
-#parameter_space(N=50000, search_params=search_params_restrict, plotmode='error', show_samples=False)
-parameter_space(N=800000, search_params=search_params_restrict, plotmode='error', show_samples=False)
 
 # +
 def sample_curves(N, search_params,
@@ -454,6 +395,102 @@ def sample_curves(N, search_params,
     
     return best_deg
 
+def parameter_maps(N, search_params, subplot_spec,
+                   weighted=False, error_func_name="Max error",
+                   max_error=30, error_upper_cutoff=90,
+                   ):
+    search_params_all = search_params
+    search_params = dict((k, v) for k, v in search_params.items() if isinstance(v, tuple))
+    # aim for at least 100 params per pixel, but only need 40x40 max pixels
+    N_img = min(int(sqrt(N/100.)), 40)
+    print 'Image dimension {N_img}x{N_img}, approximately {samp} samples per pixel'.format(
+                N_img=N_img, samp=int(N/N_img**2))
+    # always use the same random seed for cacheing
+    seed(34032483)
+    # Get simple parameters
+    error_func = error_functions[error_func_name]
+    # Run the model
+    res = simple_model(N, search_params_all, use_standalone_openmp=True, update_progress='text')
+    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
+    mse = res.mse
+    good_indices = mse<max_error*pi/180
+    # Plot parameter pairs
+    nparam = len(search_params)
+    gs = GridSpecFromSubplotSpec(nparam-1, nparam-1, wspace=0, hspace=0, subplot_spec=subplot_spec)
+    image_axes = []
+    for i in xrange(nparam):
+        for j in xrange(i+1, nparam):
+            px = search_params.keys()[i]
+            py = search_params.keys()[j]
+            vx = res.raw.params[px]
+            vy = res.raw.params[py]
+            xmin, xmax = search_params[px]
+            ymin, ymax = search_params[py]
+            image_axes.append(subplot(gs[j-1, i]))
+            error = 2*pi*ones((N_img, N_img))
+            @numba.jit(nopython=True)
+            def find_best_error(error, vx, vy, mse, xmin, xmax, ymin, ymax):
+                N = error.shape[0]
+                wx = float(xmax-xmin)/N
+                wy = float(ymax-ymin)/N
+                for k in range(mse.shape[0]):
+                    x = vx[k]
+                    y = vy[k]
+                    i = int((x-xmin)/wx)
+                    j = int((y-ymin)/wy)
+                    if mse[k]<error[i, j]:
+                        error[i, j] = mse[k]
+            find_best_error(error, vx, vy, mse, xmin, xmax, ymin, ymax)
+            error = error.T*180/pi
+            #error = median_filter(error, size=5, mode='nearest')
+            #error = minimum_filter(error, size=3, mode='nearest')
+            error_blur = gaussian_filter(error, 3, mode='nearest')
+            img_obj = imshow(error, extent=(xmin, xmax, ymin, ymax),
+                   origin='lower left', aspect='auto', interpolation='nearest',
+                   vmin=0, vmax=error_upper_cutoff, cmap=cm.viridis)
+            cs = contour(error_blur, origin='lower',
+                         levels=[15, 30, 45], colors='w',
+                         extent=(xmin, xmax, ymin, ymax))
+            # this weird hack works around a bug in contour
+            for level, linecol in zip(cs.levels, cs.collections):
+                if level==15:
+                    linecol.set_linestyle('solid')
+                if level==30:
+                    linecol.set_linestyle('dashed')
+                if level==45:
+                    linecol.set_linestyle('dotted')
+            xlim(*search_params[px])
+            ylim(*search_params[py])
+            if j==nparam-1:
+                xlabel(latex_parameter_names[px])
+                xticks(search_params[px], ['%.2f' % paramval for paramval in search_params[px]])
+                ticklabels = gca().get_xticklabels()
+                ticklabels[0].set_ha('left')
+                ticklabels[0].set_text(' '+ticklabels[0].get_text())
+                ticklabels[-1].set_ha('right')
+                ticklabels[-1].set_text(ticklabels[-1].get_text()+' ')
+                gca().set_xticklabels(ticklabels)
+            else:
+                xticks([])
+            if i==0:
+                yticks(search_params[py], ['%.2f' % paramval for paramval in search_params[py]])
+                ticklabels = gca().get_yticklabels()
+                ticklabels[0].set_va('bottom')
+                ticklabels[-1].set_va('top')
+                ylabel(latex_parameter_names[py])
+                gca().get_yaxis().set_label_coords(-0.2,0.5)
+            else:
+                yticks([])
+    
+    return image_axes
+    
+#     cb = mainfig.colorbar(img_obj, ax=mainfig.axes, use_gridspec=True,
+#              ticks=range(0, 121, 15),
+#              orientation='horizontal',
+#              fraction=0.04, pad=0.08, aspect=40,
+#             )
+#     cb.set_label(error_func_name)#, rotation=270, labelpad=20)
+
 def comparison_figure(N, search_params):
     comparison_specs = OrderedDict([
         ('All', dict()),
@@ -463,21 +500,58 @@ def comparison_figure(N, search_params):
         ('Octopus', dict(level=0, gamma=1, beta=1, alpha=0, taua_ms=1)),
         ('Adapting octopus', dict(level=0, gamma=1, beta=1)),
         ])
-    figure(figsize=(14, 5), dpi=65)
+    map_specs = ['Adaptation', 'Onset', 'Adapting octopus']
+    figure(figsize=(14, 9), dpi=65)
     best_deg = OrderedDict()
+    comp_axes = {}
+    modif_params = {}
     for i, (name, modif) in enumerate(comparison_specs.items()):
-        subplot(2, len(comparison_specs), i+1+len(comparison_specs))
+        comp_axes[name] = subplot(4, len(comparison_specs), i+1+len(comparison_specs))
         cur_search_params = search_params.copy()
         cur_search_params.update(modif)
+        modif_params[name] = cur_search_params
         best_deg[name] = sample_curves(N, cur_search_params)
         if i:
             locs, label = yticks()
             yticks(locs, ['']*len(locs))
             ylabel('')
         title(name)
-    subplot(2, 1, 1)
-    bar(range(len(comparison_specs)), best_deg.values(), width=0.1)
-    xticks(range(len(comparison_specs)), best_deg.keys())
-    tight_layout()
-    
+    # Plot the maps
+    map_axes = {}
+    for i, name in enumerate(map_specs):
+        #subplot(2, len(map_specs), len(map_specs)+1+i)
+        subplot_spec = GridSpec(2, len(map_specs))[1, i]
+        map_axes[name] = parameter_maps(N, modif_params[name], subplot_spec)
+    # We plot the error summary at the end after the tight_layout() so that the axis
+    # locations are known
+    subplot(4, 1, 1)
+    ylim(0, 60)
+    ylabel('Best solution error (deg)')
+    tight_layout(rect=(0.05, 0, 1, 1))
+    X = []
+    L, R = None, None
+    for name in comparison_specs.keys():
+        bb = comp_axes[name].get_position()
+        if L is None:
+            L = bb.xmin
+        R = bb.xmax
+        x = (bb.xmin+bb.xmax)/2.
+        X.append(x)
+        plot([x, x], [0, best_deg[name]], '-k')
+        plot([x], [best_deg[name]], 'ok')
+        text(x, best_deg[name], '    %.1f$^\\circ$' % best_deg[name], va='center', ha='left')
+    xlim(L, R)
+    xticks(X, ['']*len(X))
+    # Annotations
+    text(0.02, 0.98, 'A', fontsize=18, transform=gcf().transFigure,
+         horizontalalignment='left', verticalalignment='top')
+    for i, (c, name) in enumerate(zip('BCD', map_specs)):
+        text(0.02+0.96*i/len(map_specs), 0.48, c, fontsize=18, transform=gcf().transFigure,
+             horizontalalignment='left', verticalalignment='top')
+        L = min(ax.get_position().xmin for ax in map_axes[name])
+        R = max(ax.get_position().xmax for ax in map_axes[name])
+        text(0.5*(L+R), 0.48, name, fontsize=12, transform=gcf().transFigure, ha='center', va='top')
+            
 comparison_figure(N=800000, search_params=search_params)
+
+savefig('figure_comparison_restricted.pdf')
