@@ -527,6 +527,7 @@ def comparison_figure(N, search_params):
     subplot(4, 1, 1)
     ylim(0, 60)
     ylabel('Best solution error (deg)')
+    axhline(30, ls='--', c='r')
     tight_layout(rect=(0.05, 0, 1, 1))
     X = []
     L, R = None, None

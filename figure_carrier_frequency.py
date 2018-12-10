@@ -174,7 +174,7 @@ def plot_cell_types(M, num_params, params,
     # Error map
     extent = (params[vx]+params[vy])
     subplot(gs_maps[0:2, 0:2]) # error
-    mse_summary = median_filter(mse_summary, mode='nearest', size=5)
+    #mse_summary = median_filter(mse_summary, mode='nearest', size=5)
     #mse_summary = minimum_filter(mse_summary, mode='nearest', size=3)
     mse_summary_blur = gaussian_filter(mse_summary, 1, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
@@ -369,8 +369,10 @@ def plot_carrier_frequency(M, num_params, params,
     # Error map
     extent = (params[vx]+params[vy])
     subplot(gs[0:2, 0:2]) # error
-    mse_summary = median_filter(mse_summary, mode='nearest', size=5)
-    mse_summary_blur = gaussian_filter(mse_summary, 2, mode='nearest')    
+    #mse_summary = median_filter(mse_summary, mode='nearest', size=5)
+    mse_summary_med = median_filter(mse_summary, mode='nearest', size=5)
+    mse_summary_min = minimum_filter(mse_summary, mode='nearest', size=3)
+    mse_summary_blur = gaussian_filter(mse_summary_min, 3, mode='nearest')    
     imshow(mse_summary, origin='lower left', aspect='auto',
            interpolation='nearest', extent=extent, vmin=0, vmax=135)
     colorbar()
