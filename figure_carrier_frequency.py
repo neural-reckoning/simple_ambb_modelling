@@ -468,7 +468,8 @@ plot_carrier_frequency(
     #M=10, num_params=20,
     #M=20, num_params=100,
     #M=40, num_params=200,
-    M=80, num_params=500, # 3.2M param sets, several hours
+    #M=80, num_params=500, # 3.2M param sets, several hours
+    M=40, num_params=2000, # 3.2M param sets, several hours
     weighted=False, error_func_name='Max error',
     max_error=30,
     params=dict(
