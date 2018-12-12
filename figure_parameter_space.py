@@ -1,29 +1,16 @@
 # ---
 # jupyter:
-#   hide_input: false
 #   jupytext:
 #     formats: ipynb,py:light
 #     text_representation:
 #       extension: .py
 #       format_name: light
 #       format_version: '1.3'
-#       jupytext_version: 0.8.1
-#   jupytext_format_version: '1.3'
-#   jupytext_formats: py:light
+#       jupytext_version: 0.8.6
 #   kernelspec:
 #     display_name: Python 2
 #     language: python
 #     name: python2
-#   language_info:
-#     codemirror_mode:
-#       name: ipython
-#       version: 2
-#     file_extension: .py
-#     mimetype: text/x-python
-#     name: python
-#     nbconvert_exporter: python
-#     pygments_lexer: ipython2
-#     version: 2.7.15
 # ---
 
 # # Parameter space figure
