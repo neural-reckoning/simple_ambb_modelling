@@ -26,6 +26,7 @@ import joblib
 from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter, median_filter, minimum_filter
 from simple_model import *
+from simple_model import mem
 from model_explorer_jupyter import meshed_arguments
 import itertools
 import numba
@@ -539,7 +540,52 @@ def comparison_figure(N, search_params):
         L = min(ax.get_position().xmin for ax in map_axes[name])
         R = max(ax.get_position().xmax for ax in map_axes[name])
         text(0.5*(L+R), 0.48, name, fontsize=12, transform=gcf().transFigure, ha='center', va='top')
-            
+
+#comparison_figure(N=50000, search_params=search_params)
 comparison_figure(N=800000, search_params=search_params)
 
 savefig('figure_comparison_restricted.pdf')
+
+# +
+def parameter_space_curve_fitting_analysis(
+        N, search_params,
+        weighted=False, error_func_name="Max error",
+        num_target_phases=1000,
+        ):   
+    # always use the same random seed for cacheing
+    seed(34032483)
+    # Get simple parameters
+    error_func = error_functions[error_func_name]
+    # Run the model
+    res = simple_model(N, search_params, use_standalone_openmp=True, update_progress='text')
+    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
+    
+    # Compute scores for a randomly selected set of data
+    figure(figsize=(4, 3), dpi=85)
+    for randomisation_method_name, make_target_phase in [
+                ('Random increasing IPD (<180)', lambda: sort(rand(len(dietz_fm))*pi)),
+                ('Random IPD', lambda: rand(len(dietz_fm))*2*pi),
+                ]:
+        mse_min = []
+        for _ in xrange(num_target_phases):
+            target_phase = make_target_phase()
+            mse = error_func(target_phase[newaxis, :], res.peak_phase) # sum over fm, mse has shape N
+            mse_min.append(amin(mse))
+        mse_min = array(mse_min)*180/pi
+        hist(mse_min, linspace(0, 180, 181), label=randomisation_method_name,
+             cumulative=True, weights=ones(len(mse_min))*100./len(mse_min))
+        print '%s: %.1f%% below minimum error for target=data' % (randomisation_method_name,
+                                                                  100.0*sum(mse_min<amin(res.mse)*180./pi)/num_target_phases)
+    axvline(amin(res.mse)*180/pi, c='r', lw=2, label='Minimum error (target=data)')
+    ylim(0, 100)
+    xlim(0, 180)
+    xticks([0,15,30,45,90,135,180])
+    legend(loc='upper right')
+    xlabel('Minimum error (deg)')
+    ylabel('% dist below min error')
+    tight_layout()
+    
+#parameter_space_curve_fitting_analysis(N=50000, search_params=search_params)
+#parameter_space_curve_fitting_analysis(N=800000, search_params=search_params)
+parameter_space_curve_fitting_analysis(N=4000000, search_params=search_params)
+savefig('figure_single_neuron_model_curve_fitting_analysis.pdf')
