@@ -343,6 +343,7 @@ def sample_curves(N, search_params,
     mse = res.mse
     meanvs = mean(res.raw_measures['vs'], axis=1)
     good_indices = mse<max_error*pi/180
+    fraction_good = sum(good_indices)*1.0/len(good_indices)
     # Plot some sample extracted phase curves
     peak_phase = res.peak_phase
     # Properties of lowest MSE value
@@ -381,7 +382,7 @@ def sample_curves(N, search_params,
     xlabel('Modulation frequency (Hz)')
     ylabel('Extracted phase (deg)')
     
-    return best_deg
+    return best_deg, fraction_good
 
 def parameter_maps(N, search_params, subplot_spec,
                    weighted=False, error_func_name="Max error",
@@ -493,12 +494,13 @@ def comparison_figure(N, search_params):
     best_deg = OrderedDict()
     comp_axes = {}
     modif_params = {}
+    fraction_good = OrderedDict()
     for i, (name, modif) in enumerate(comparison_specs.items()):
         comp_axes[name] = subplot(4, len(comparison_specs), i+1+len(comparison_specs))
         cur_search_params = search_params.copy()
         cur_search_params.update(modif)
         modif_params[name] = cur_search_params
-        best_deg[name] = sample_curves(N, cur_search_params)
+        best_deg[name], fraction_good[name] = sample_curves(N, cur_search_params)
         if i:
             locs, label = yticks()
             yticks(locs, ['']*len(locs))
@@ -512,10 +514,15 @@ def comparison_figure(N, search_params):
         map_axes[name] = parameter_maps(N, modif_params[name], subplot_spec)
     # We plot the error summary at the end after the tight_layout() so that the axis
     # locations are known
-    subplot(4, 1, 1)
-    ylim(0, 60)
-    ylabel('Best solution error (deg)')
-    axhline(30, ls='--', c='r')
+    ax_main = subplot(4, 1, 1)
+    ax_twin = ax_main.twinx()
+    twinx
+    ax_main.set_ylim(0, 60)
+    ax_main.set_ylabel('Best solution error (deg)')
+    ax_main.axhline(30, ls='--', c='r')
+    ax_twin.set_ylim(0, int(ceil(amax(fraction_good.values())*100.0)))
+    ax_twin.set_ylabel('% of good solutions', color=(0.4, 0.7, 0.4))
+    ax_twin.tick_params(axis='y', labelcolor=(0.4, 0.7, 0.4))
     tight_layout(rect=(0.05, 0, 1, 1))
     X = []
     L, R = None, None
@@ -526,11 +533,17 @@ def comparison_figure(N, search_params):
         R = bb.xmax
         x = (bb.xmin+bb.xmax)/2.
         X.append(x)
-        plot([x, x], [0, best_deg[name]], '-k')
-        plot([x], [best_deg[name]], 'ok')
-        text(x, best_deg[name], '    %.1f$^\\circ$' % best_deg[name], va='center', ha='left')
-    xlim(L, R)
-    xticks(X, ['']*len(X))
+        ax_twin.bar([x], [100.0*fraction_good[name]], (bb.xmax-bb.xmin)*0.25,
+                    align='center', color=(0.4, 0.7, 0.4))
+        ax_main.plot([x, x], [0, best_deg[name]], '-k')
+        ax_main.plot([x], [best_deg[name]], 'ok')
+        ax_main.text(x, best_deg[name], '    %.1f$^\\circ$' % best_deg[name], va='center', ha='left')
+    ax_twin.set_xlim(L, R)
+    ax_twin.set_xticks(X, ['']*len(X))
+    ax_main.set_xlim(L, R)
+    ax_main.set_xticks(X, ['']*len(X))
+    ax_main.set_zorder(ax_twin.get_zorder()+1) # put ax in front of ax2
+    ax_main.patch.set_visible(False) # hide the 'canvas' 
     # Annotations
     text(0.02, 0.98, 'A', fontsize=18, transform=gcf().transFigure,
          horizontalalignment='left', verticalalignment='top')
@@ -541,8 +554,8 @@ def comparison_figure(N, search_params):
         R = max(ax.get_position().xmax for ax in map_axes[name])
         text(0.5*(L+R), 0.48, name, fontsize=12, transform=gcf().transFigure, ha='center', va='top')
 
-#comparison_figure(N=50000, search_params=search_params)
-comparison_figure(N=800000, search_params=search_params)
+comparison_figure(N=50000, search_params=search_params)
+#comparison_figure(N=800000, search_params=search_params)
 
 savefig('figure_comparison_restricted.pdf')
 
