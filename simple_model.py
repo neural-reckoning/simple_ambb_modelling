@@ -22,7 +22,7 @@ def normed(X, *args):
     m = max(amax(abs(Y)) for Y in (X,)+args)
     return X/m
 
-mem = joblib.Memory(location='.', bytes_limit=10*1024**3, verbose=0) # 10 GB max cache
+mem = joblib.Memory(location='.', verbose=0) # 10 GB max cache
 
 
 class Results(object): # simple heap class, we'll add attributes to it

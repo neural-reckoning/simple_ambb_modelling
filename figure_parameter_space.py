@@ -26,6 +26,7 @@ import joblib
 from scipy.ndimage.interpolation import zoom
 from scipy.ndimage.filters import gaussian_filter, median_filter, minimum_filter
 from simple_model import *
+from simple_model import mem
 from model_explorer_jupyter import meshed_arguments
 import itertools
 import numba
@@ -342,6 +343,7 @@ def sample_curves(N, search_params,
     mse = res.mse
     meanvs = mean(res.raw_measures['vs'], axis=1)
     good_indices = mse<max_error*pi/180
+    fraction_good = sum(good_indices)*1.0/len(good_indices)
     # Plot some sample extracted phase curves
     peak_phase = res.peak_phase
     # Properties of lowest MSE value
@@ -380,7 +382,7 @@ def sample_curves(N, search_params,
     xlabel('Modulation frequency (Hz)')
     ylabel('Extracted phase (deg)')
     
-    return best_deg
+    return best_deg, fraction_good
 
 def parameter_maps(N, search_params, subplot_spec,
                    weighted=False, error_func_name="Max error",
@@ -492,12 +494,13 @@ def comparison_figure(N, search_params):
     best_deg = OrderedDict()
     comp_axes = {}
     modif_params = {}
+    fraction_good = OrderedDict()
     for i, (name, modif) in enumerate(comparison_specs.items()):
         comp_axes[name] = subplot(4, len(comparison_specs), i+1+len(comparison_specs))
         cur_search_params = search_params.copy()
         cur_search_params.update(modif)
         modif_params[name] = cur_search_params
-        best_deg[name] = sample_curves(N, cur_search_params)
+        best_deg[name], fraction_good[name] = sample_curves(N, cur_search_params)
         if i:
             locs, label = yticks()
             yticks(locs, ['']*len(locs))
@@ -511,10 +514,15 @@ def comparison_figure(N, search_params):
         map_axes[name] = parameter_maps(N, modif_params[name], subplot_spec)
     # We plot the error summary at the end after the tight_layout() so that the axis
     # locations are known
-    subplot(4, 1, 1)
-    ylim(0, 60)
-    ylabel('Best solution error (deg)')
-    axhline(30, ls='--', c='r')
+    ax_main = subplot(4, 1, 1)
+    ax_twin = ax_main.twinx()
+    twinx
+    ax_main.set_ylim(0, 60)
+    ax_main.set_ylabel('Best solution error (deg)')
+    ax_main.axhline(30, ls='--', c='r')
+    ax_twin.set_ylim(0, int(ceil(amax(fraction_good.values())*100.0)))
+    ax_twin.set_ylabel('% of good solutions', color=(0.4, 0.7, 0.4))
+    ax_twin.tick_params(axis='y', labelcolor=(0.4, 0.7, 0.4))
     tight_layout(rect=(0.05, 0, 1, 1))
     X = []
     L, R = None, None
@@ -525,11 +533,17 @@ def comparison_figure(N, search_params):
         R = bb.xmax
         x = (bb.xmin+bb.xmax)/2.
         X.append(x)
-        plot([x, x], [0, best_deg[name]], '-k')
-        plot([x], [best_deg[name]], 'ok')
-        text(x, best_deg[name], '    %.1f$^\\circ$' % best_deg[name], va='center', ha='left')
-    xlim(L, R)
-    xticks(X, ['']*len(X))
+        ax_twin.bar([x], [100.0*fraction_good[name]], (bb.xmax-bb.xmin)*0.25,
+                    align='center', color=(0.4, 0.7, 0.4))
+        ax_main.plot([x, x], [0, best_deg[name]], '-k')
+        ax_main.plot([x], [best_deg[name]], 'ok')
+        ax_main.text(x, best_deg[name], '    %.1f$^\\circ$' % best_deg[name], va='center', ha='left')
+    ax_twin.set_xlim(L, R)
+    ax_twin.set_xticks(X, ['']*len(X))
+    ax_main.set_xlim(L, R)
+    ax_main.set_xticks(X, ['']*len(X))
+    ax_main.set_zorder(ax_twin.get_zorder()+1) # put ax in front of ax2
+    ax_main.patch.set_visible(False) # hide the 'canvas' 
     # Annotations
     text(0.02, 0.98, 'A', fontsize=18, transform=gcf().transFigure,
          horizontalalignment='left', verticalalignment='top')
@@ -539,7 +553,52 @@ def comparison_figure(N, search_params):
         L = min(ax.get_position().xmin for ax in map_axes[name])
         R = max(ax.get_position().xmax for ax in map_axes[name])
         text(0.5*(L+R), 0.48, name, fontsize=12, transform=gcf().transFigure, ha='center', va='top')
-            
-comparison_figure(N=800000, search_params=search_params)
+
+comparison_figure(N=50000, search_params=search_params)
+#comparison_figure(N=800000, search_params=search_params)
 
 savefig('figure_comparison_restricted.pdf')
+
+# +
+def parameter_space_curve_fitting_analysis(
+        N, search_params,
+        weighted=False, error_func_name="Max error",
+        num_target_phases=1000,
+        ):   
+    # always use the same random seed for cacheing
+    seed(34032483)
+    # Get simple parameters
+    error_func = error_functions[error_func_name]
+    # Run the model
+    res = simple_model(N, search_params, use_standalone_openmp=True, update_progress='text')
+    res = simple_model_results(N, res, error_func, weighted=weighted, interpolate_bmf=False)
+    
+    # Compute scores for a randomly selected set of data
+    figure(figsize=(4, 3), dpi=85)
+    for randomisation_method_name, make_target_phase in [
+                ('Random increasing IPD (<180)', lambda: sort(rand(len(dietz_fm))*pi)),
+                ('Random IPD', lambda: rand(len(dietz_fm))*2*pi),
+                ]:
+        mse_min = []
+        for _ in xrange(num_target_phases):
+            target_phase = make_target_phase()
+            mse = error_func(target_phase[newaxis, :], res.peak_phase) # sum over fm, mse has shape N
+            mse_min.append(amin(mse))
+        mse_min = array(mse_min)*180/pi
+        hist(mse_min, linspace(0, 180, 181), label=randomisation_method_name,
+             cumulative=True, weights=ones(len(mse_min))*100./len(mse_min))
+        print '%s: %.1f%% below minimum error for target=data' % (randomisation_method_name,
+                                                                  100.0*sum(mse_min<amin(res.mse)*180./pi)/num_target_phases)
+    axvline(amin(res.mse)*180/pi, c='r', lw=2, label='Minimum error (target=data)')
+    ylim(0, 100)
+    xlim(0, 180)
+    xticks([0,15,30,45,90,135,180])
+    legend(loc='upper right')
+    xlabel('Minimum error (deg)')
+    ylabel('% dist below min error')
+    tight_layout()
+    
+#parameter_space_curve_fitting_analysis(N=50000, search_params=search_params)
+#parameter_space_curve_fitting_analysis(N=800000, search_params=search_params)
+parameter_space_curve_fitting_analysis(N=4000000, search_params=search_params)
+savefig('figure_single_neuron_model_curve_fitting_analysis.pdf')
