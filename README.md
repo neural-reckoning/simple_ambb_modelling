@@ -22,3 +22,5 @@ compositions of common neural circuits in the brain. This is in line with the th
 functionally overlapping general purpose mechanisms rather than a collection of mechanisms each highly specialised to
 specific tasks. Additionally, interactive live code notebooks comprehensively covering the results described in this
 paper were made accessible online.
+
+![Basic mechanisms of the population model](fig_basic_mech.png?raw=true "Basic mechanisms of the population model")
