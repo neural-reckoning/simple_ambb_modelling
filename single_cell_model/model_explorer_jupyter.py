@@ -1,3 +1,27 @@
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.3'
+#       jupytext_version: 0.8.3
+#   kernelspec:
+#     display_name: Python 2
+#     language: python
+#     name: python2
+#   language_info:
+#     codemirror_mode:
+#       name: ipython
+#       version: 2
+#     file_extension: .py
+#     mimetype: text/x-python
+#     name: python
+#     nbconvert_exporter: python
+#     pygments_lexer: ipython2
+#     version: 2.7.15
+# ---
+
 import ipywidgets as ipw
 from IPython.display import display, clear_output
 from collections import OrderedDict
@@ -38,8 +62,8 @@ def save_fig_widget(callback, default_filename="figure.pdf"):
         callback(widget_filename.value)
     savefig_button.on_click(save_fig_callback)
     return ipw.HBox(children=[savefig_button, widget_filename])
-           
-    
+
+
 def brian2_progress_reporter():
     '''
     Returns a widget and callback function to be used with Brian 2
@@ -71,7 +95,7 @@ def brian2_progress_reporter():
             progress_slider.description = "Simulating (%s remaining)" % remaining
     return progress_slider, update_progress
 
-    
+
 def model_explorer(models):
     '''
     Returns a Model Explorer UI
@@ -329,8 +353,8 @@ class VariableSelector(object):
             else:
                 d[k] = unselected[k]
         return d
-    
-    
+
+
 def meshed_arguments(meshvars, fixedvars, ranges):
     '''
     Returns a dictionary of arguments representing all combinations of certain variables
