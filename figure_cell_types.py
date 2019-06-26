@@ -1,27 +1,16 @@
 # ---
 # jupyter:
-#   hide_input: false
 #   jupytext:
 #     formats: ipynb,py:light
 #     text_representation:
 #       extension: .py
 #       format_name: light
 #       format_version: '1.3'
-#       jupytext_version: 0.8.1
+#       jupytext_version: 0.8.6
 #   kernelspec:
 #     display_name: Python 2
 #     language: python
 #     name: python2
-#   language_info:
-#     codemirror_mode:
-#       name: ipython
-#       version: 2
-#     file_extension: .py
-#     mimetype: text/x-python
-#     name: python
-#     nbconvert_exporter: python
-#     pygments_lexer: ipython2
-#     version: 2.7.15
 # ---
 
 # # Cell types
@@ -145,47 +134,15 @@ def plot_cell_types(M, num_params, params,
               ]
     
     # Plot the data
-    fig = figure(figsize=(10, 10))
-    gs_maps = GridSpec(2, 8, left=.0, bottom=.7, top=1, width_ratios=[1]*7+[0.5])
-    gs_hist = GridSpec(3, 4, left=.05, bottom=0.25, top=0.7)
-    gs_ex = GridSpec(1, 4, left=.05, bottom=0.0, top=0.24)
-    ordered_gridspecs = [gs_maps, gs_hist, gs_ex]
+    fig = figure(figsize=(10, 6))
+    gs_hist = GridSpec(3, 4, left=.05, bottom=0.35, top=1)
+    gs_ex = GridSpec(1, 4, left=.05, bottom=0.0, top=0.34)
+    ordered_gridspecs = [gs_hist, gs_ex]
 
     def hatchback():
         p = patches.Rectangle((extent[0], extent[2]), extent[1]-extent[0], extent[3]-extent[2],
                               hatch='xxxx', fill=True, fc=(0.9,)*3, ec=(0.8,)*3, zorder=-10)
         gca().add_patch(p)
-
-    # Map colourbar
-    subplot(gs_maps[0:2, 7])
-    s, v = meshgrid(linspace(0, 1, 20), linspace(0, 1, 20))
-    img = cm.viridis(v)[:, :, :3] # convert to rgb, discard alpha
-    img = desaturate(img, s**2) # desaturate image
-    imshow(img, extent=(0, 1, 0, 1), origin='lower left', aspect='auto', interpolation='bilinear')
-    xticks([0, 1], fontsize=8)
-    xlabel('Tuning')
-    ticklabels = gca().get_xticklabels()
-    ticklabels[0].set_ha('left')
-    ticklabels[-1].set_ha('right')
-    yticks([0, 1], ['Min', 'Max'], rotation='vertical', fontsize=8)
-    ticklabels = gca().get_yticklabels()
-    ticklabels[0].set_va('bottom')
-    ticklabels[-1].set_va('top')
-
-    # Error map
-    extent = (params[vx]+params[vy])
-    subplot(gs_maps[0:2, 0:2]) # error
-    mse_summary = median_filter(mse_summary, mode='nearest', size=5)
-    mse_summary_blur = gaussian_filter(mse_summary, 2, mode='nearest')    
-    imshow(mse_summary, origin='lower left', aspect='auto',
-           interpolation='nearest', extent=extent, vmin=0, vmax=135)
-    cs = contour(mse_summary_blur, origin='lower',
-                 levels=[15, 30, 45], colors='w',
-                 extent=extent)
-    clabel(cs, colors='w', inline=True, fmt='%d')
-    title('Max error (deg)')
-    xlabel(r'Adaptation strength $\alpha$')
-    ylabel(r'Onset strength $\beta$')
 
     # Property maps
     cell_properties = dict([
@@ -195,31 +152,6 @@ def plot_cell_types(M, num_params, params,
         ('rMD', (res.moddepth['mean'], 0, 1)),
         ('rBMF', (res.bmf['mean'], 4, 64)),
         ])
-    for i, (name, (values, vmin, vmax)) in enumerate(cell_properties.items()):
-        subplot(gs_maps[0, 2+i])
-        title(name)
-        imshow(pop_summary(mse, values, vmin=vmin, vmax=vmax),
-               origin='lower left', aspect='auto',
-               interpolation='nearest', extent=extent)
-        xticks([])
-        yticks([])
-        hatchback()
-
-    # Parameter maps
-    for i, paramname in enumerate(set(params.keys())-set(['alpha', 'beta'])):
-        subplot(gs_maps[1, 2+i])
-        title(latex_parameter_names[paramname])
-        v = reshape(res.raw.params[paramname], (M, M, num_params))
-        low, high = params[paramname]
-        img = pop_summary(mse, v, vmin=low, vmax=high)
-        #img = median_filter(img, mode='nearest', size=5)
-        #img = gaussian_filter(img, 1, mode='nearest')    
-        imshow(img,
-               origin='lower left', aspect='auto',
-               interpolation='nearest', extent=extent)
-        xticks([])
-        yticks([])
-        hatchback()
 
     # Region examples
     ax_lf = subplot(gs_ex[0, 0])
@@ -324,7 +256,7 @@ def plot_cell_types(M, num_params, params,
         gs.tight_layout(fig, rect=(gs.left, gs.bottom, gs.right, gs.top))
 
     # annotate
-    for c, loc in zip('ABC', [.98, .68, .23]):
+    for c, loc in zip('AB', [.98, .33]):
         text(0.02, loc, c, fontsize=14, transform=fig.transFigure,
              horizontalalignment='left', verticalalignment='top')
 
