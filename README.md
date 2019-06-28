@@ -6,7 +6,7 @@ on revereberant sound localisation of [Dietz et al., 2013](https://www.pnas.org/
 
 To run this code interactively online, click the launch binder link below.
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/neural-reckoning/simple_ambb_modelling/master)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/neural-reckoning/simple_ambb_modelling/master?filepath=index.ipynb)
 
 ## Abstract
 
