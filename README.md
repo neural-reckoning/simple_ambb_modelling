@@ -1,7 +1,7 @@
 # General neural mechanismscan account for rising slope preference in localization of ambiguous sounds 
 
 This repository is an interactive version of the paper *General neural mechanismscan account for rising slope preference in localization of ambiguous sounds*
-by Jean-Hugues Lestang and Dan Goodman. A preprint version of this paper can be found [here](https://www.biorxiv.org/content/10.1101/687178v2) [We show that we can re-use standard neural mechanisms to account for the data
+by Jean-Hugues Lestang and Dan Goodman. A preprint version of this paper can be found [here](https://www.biorxiv.org/content/10.1101/687178v2). [We show that we can re-use standard neural mechanisms to account for the data
 on revereberant sound localisation of [Dietz et al., 2013](https://www.pnas.org/content/110/37/15151).
 
 To run this code interactively online, click the launch binder link below.
